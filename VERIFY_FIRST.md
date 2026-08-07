@@ -13,6 +13,22 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 
 ---
 
+## Bench tooling
+
+- [ ] **Which firmware is on the CANable clone (Jhoinrch RH02)?** `ls /dev/cu.usbmodem*`
+      — a serial device means `slcan` (works on the Mac via python-can
+      `bustype='slcan'`); nothing means `candleLight`/`gs_usb`, which has no serial
+      port and needs the Pi, since macOS has no SocketCAN.
+
+- [ ] **Is `R120` a solder jumper or a switch, and which state is it in?**
+      *Method:* meter across the screw terminals with nothing attached — 120R means
+      terminated. **Label it.** The iBooster bus wants it ON (2 nodes, booster
+      terminates neither end); the iDrive bus in Phase -1 wants it OFF (already
+      terminated both ends). Both are 500 kbps 2-node buses, which is exactly why
+      this gets mixed up.
+
+---
+
 ## Connector and pinout
 
 - [ ] **Connector is a 26-pin EuCon.** Confirm by part marking and cavity count.
@@ -64,6 +80,10 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 - [ ] **Does it transmit on pins 1+9 alone, with no ignition?** Unknown. Phase 2
       answers it. This matters: if yes, the whole decode can be done without the
       motor ever being able to move.
+
+- [ ] **Total frame rate, per bus.** Phase 3. Not a safety item — it is the criterion
+      that decides the Phase 7 car-side architecture (dongle-on-Pi vs a dedicated
+      ESP32 filtering the stream). Nothing else measures it, so do not skip past it.
 
 ---
 

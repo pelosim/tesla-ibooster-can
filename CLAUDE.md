@@ -36,16 +36,22 @@ hardware fallback. Do not incrementally grow into that.
 
 ## Data topology
 
-    iBooster ──CAN (private 2-node, 120R both ends)── sniffer ESP32
-                                                        ├── USB CDC → HVAC Pi
-                                                        │     log + state (PRIMARY)
-                                                        └── ESP-NOW → gauge panel B
-                                                              status indicator
-
-The Pi is the primary sink: it is already the state hub for this car, and logging
-is the thing that actually pays off — the useful question in service is "what did
+Settled: **the Pi is the primary sink** — it is already the state hub for this car,
+and logging is what actually pays off. The useful question in service is "what did
 the booster report just before that pedal felt wrong", not "what is it doing this
-instant". ESP-NOW to panel B is the display leg only.
+instant". The display leg is secondary.
+
+The *transport* is an open decision, deferred to Phase 7 and gated on the frame rate
+measured in Phase 3:
+
+    A  iBooster ──CAN── CANable ──USB── Pi ──existing USB link── panel B
+    B  iBooster ──CAN── ESP32 ──USB CDC── Pi
+                           └──ESP-NOW── panel B
+
+**A** deletes a board and an ESP-NOW hop and gets SocketCAN's tooling. **B** keeps an
+isolated MCU that boots in under a second and filters a firehose down to two signals,
+which matters if the booster turns out to be chatty — the Pi already carries HVAC,
+iDrive, lighting, dashboard and kiosk. Do not pick until Phase 3 has a number.
 
 ESP-NOW is a different radio from CAN and does not touch the read-only story.
 
@@ -81,9 +87,17 @@ locations. Anything earlier would be encoding guesses.
 | Part | Detail |
 |---|---|
 | DUT | Bosch iBooster Gen2 family, Tesla PN `1037123-00-B` (2020 Model S LR) |
-| MCU | ESP32-S3 (Lonely Binary Dev Module class) — a **spare** board, see below |
-| Transceiver | **SN65HVD230** — 3.3V native. NOT MCP2551 (5V, needs shifting) |
+| Bench interface | **CANable clone (Jhoinrch RH02) USB-CAN dongle** — owned, primary |
+| Fallback interface | ESP32-S3 + **SN65HVD230** (3.3V native) running `ibooster_sniffer` |
 | Bus | 500 kbps, two independent buses, **no internal termination** |
+
+**The MCP2551 in the parts drawer is unusable with an ESP32-S3** — and the reason is
+worth keeping, because "it mostly works" is the trap. It is 5V-only: RXD swings to
+5V into a GPIO whose absolute max is ~3.6V (the S3 is not 5V tolerant), and TXD's
+high threshold is 0.7 × VDD = 3.5V, above the 3.3V the S3 drives. A marginal TXD
+read as dominant **jams the bus** — active failure, not passive, and
+temperature-dependent, so it passes on the bench and misbehaves hot. SN65HVD230 or
+TJA1051T/3 (VIO pin) only.
 
 Pins: CTX=GPIO4, CRX=GPIO8, NeoPixel=GPIO48 — identical to idrive-controller,
 so the same bench board and transceiver wiring drops straight in.

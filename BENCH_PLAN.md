@@ -22,6 +22,81 @@ real force.
 
 ---
 
+## Bench tooling
+
+**Primary: the CANable-clone USB-CAN dongle** (Jhoinrch RH02, already owned).
+Purpose-built, known-good, screw terminals for CANH/GND/CANL. A second one is ~$19
+and lets you capture both booster buses on one timeline instead of stitching two
+sweeps together — worth it before Phase 5.
+
+**Fallback: `ibooster_sniffer`** on an ESP32-S3 + SN65HVD230. Written and compiling,
+but nothing needs ordering for it unless the dongle disappoints.
+
+⚠️ **The MCP2551 in the parts drawer will not work with an ESP32-S3.** It is 5V-only:
+its RXD swings to 5V into a GPIO whose absolute max is ~3.6V (the S3 is not 5V
+tolerant), and its TXD high threshold is 0.7 × VDD = 3.5V, above the 3.3V the S3
+drives. A marginal TXD can be read as dominant and **jam the bus** — active failure,
+not passive, on a brake actuator's wire. Use SN65HVD230 (3.3V native) or TJA1051T/3
+(VIO pin) if the ESP32 path is ever taken up.
+
+### Termination — the rule inverts, so read carefully
+
+The dongle has an `R120` option on the silkscreen. **Work out whether it is a solder
+jumper or a switch, and label which state it is in**, because the two buses you will
+touch want opposite settings:
+
+| Bus | Termination | Why |
+|---|---|---|
+| iBooster bench/car bus | **R120 ON** | 2 nodes, iBooster terminates neither end |
+| iDrive bus (Phase -1 tap) | **R120 OFF** | Already terminated both ends — you would be a third |
+
+Both are 500 kbps 2-node buses, which is exactly why this is easy to mix up.
+
+### Host setup
+
+Check which firmware the dongle carries — it decides everything downstream:
+
+```bash
+ls /dev/cu.usbmodem*
+```
+
+- **Serial device appears** → `slcan` firmware. Works on the Mac today via
+  python-can `bustype='slcan'`, and with canclaude.
+- **Nothing appears** → `candleLight`/`gs_usb`. That is a native USB protocol with
+  no serial port, and macOS has no SocketCAN — it will only work on the Pi.
+
+**Prefer running it on the Pi either way.** candleLight gives a real `can0` SocketCAN
+interface, which unlocks `can-utils` — and `cansniffer` in particular, which
+highlights changing bytes live and in place. For the Phase 5 stroke sweep that is
+close to the ideal tool: you will likely *see* the pedal byte move as you push the
+rod, before writing any analysis code.
+
+---
+
+## Phase -1 — Validate the toolchain (no booster required)
+
+Do this while the booster and connector are still in transit. The point is that when
+the booster arrives and something looks wrong, you already know it is the booster or
+the wiring — not your tooling.
+
+Target: **the iDrive bus.** It is a known-good 500 kbps 2-node bus with known traffic
+on `0x25B`, already in the car.
+
+1. **R120 OFF.** That bus is already terminated at both ends; adding a third
+   terminator is the mistake this step exists to not make.
+2. Tap CANH/CANL with as short a stub as you can manage.
+3. Capture. You should see `0x25B` plus the iDrive wake/keep-alive frames.
+4. Turn the knob. `b1` should change with rotation.
+
+**Exit criteria:** frames decoded end to end — dongle → host → canclaude/candump —
+with timestamps that make sense. Toolchain trusted.
+
+**Note:** the iDrive board transmits a 20 ms keep-alive, so unlike the booster bench
+there are already two ACKing nodes here. The ACK trap will not show up in this phase.
+Do not conclude from a clean run that it will not bite you in Phase 2.
+
+---
+
 ## Phase 0 — Intake, no power
 
 1. Photograph the connector face and the housing markings.
@@ -63,16 +138,25 @@ booster should not be able to assist — nothing moves. Bench supply, current li
 
 Wiring:
 
-- 120R across H/L at the booster connector, 120R on the transceiver breakout.
-- Common ground between the ESP32, the transceiver and the booster.
+- **R120 ON** at the dongle, plus a loose 120R across H/L at the booster connector.
+- Common ground between the dongle and the booster.
 - Unpowered, H-to-L should now read **~60R**. Check this before applying power.
 
 Then:
 
 1. Powered, check the candidate CAN pins idle near **2.5V DC**. If you have a
    scope, one look at the differential pair confirms 500 kbps immediately.
-2. Flash `ibooster_sniffer`, open a terminal, send `h` for HUMAN mode.
-3. Send `L` — **listen-only**, fully passive. Watch for frames.
+2. Open the bus **listen-only** — fully passive, no ACK:
+
+   ```bash
+   # SocketCAN (Pi, candleLight firmware)
+   sudo ip link set can0 type can bitrate 500000 listen-only on && sudo ip link set can0 up
+   candump -td can0
+   ```
+
+   With slcan firmware, or `ibooster_sniffer` as the fallback, the equivalent is the
+   `L` command (`h` first for human-readable mode).
+3. Watch for frames.
 4. Repeat for the second bus.
 
 **Reading the result:**
@@ -84,8 +168,10 @@ Then:
 | Garbage / bus errors climbing | Wrong bitrate, or H/L swapped. Do **not** open in ACK mode until this is clean. |
 | Nothing at all, ever | Either it needs ignition (Phase 4) or you are on the wrong pins. |
 
-The 1 Hz health line in HUMAN mode shows bus state and both error counters, so
-error-passive and bus-off are visible instead of just looking like silence.
+Watch the error counters, not just the frame stream — `ip -details -statistics link
+show can0` on SocketCAN, or the 1 Hz health line in `ibooster_sniffer`'s HUMAN mode.
+Error-passive and bus-off are the difference between "wrong pins" and "the ACK trap",
+and both look like silence if you only watch for frames.
 
 **Exit criteria:** at least one well-formed frame decoded at 500k, on at least one
 bus — or a confident conclusion that ignition is required first.
@@ -94,17 +180,33 @@ bus — or a confident conclusion that ignition is required first.
 
 ## Phase 3 — Baseline capture (ACK mode)
 
-Send `C` then `O`. NORMAL mode ACKs but transmits no application frames. This is
-what "read-only" means in practice, and it stops the booster from giving up.
+Reopen the bus **without** listen-only. Normal mode ACKs but transmits no
+application frames — that is what "read-only" means in practice, and it is what
+stops the booster from giving up and going bus-off.
+
+```bash
+# SocketCAN — note: no 'listen-only on' this time
+sudo ip link set can0 down
+sudo ip link set can0 type can bitrate 500000 && sudo ip link set can0 up
+candump -l can0                       # writes candump-*.log
+```
+
+With `ibooster_sniffer` the equivalent is `C` then `O`.
 
 1. Capture **5 minutes idle, nothing touched**, per bus. Save to `logs/`.
 2. This is your reference. Every decode later is a diff against it.
 3. Note which IDs are periodic and at what rate, and which appear only once.
 
-    # via canclaude (python-can slcan)
-    ./.venv/bin/python canclaude.py capture --interface slcan --channel /dev/ibooster
+```bash
+# frame rate per ID — feeds the Phase 7 decision below
+candump -n 10000 can0 | awk '{print $3}' | sort | uniq -c | sort -rn
+```
 
-**Exit criteria:** a clean idle baseline log per bus, and an ID inventory.
+**Record the total frame rate.** It is the criterion that decides the car-side
+architecture in Phase 7, and this is the only phase that measures it.
+
+**Exit criteria:** a clean idle baseline log per bus, an ID inventory, and a
+frames-per-second figure.
 
 ---
 
@@ -155,8 +257,9 @@ two sweeps.
 
 ## Phase 6 — Decode and confirm
 
-1. SavvyCAN for visual diffing and graphing the candidate signal against your
-   position log.
+1. `cansniffer can0` first — it highlights changing bytes live and in place, and on
+   a signal this obvious it may well identify the byte before you write any analysis
+   code. SavvyCAN afterwards for graphing the candidate against your position log.
 2. Determine byte order and scaling properly. Do not assume big-endian; do not
    assume the raw value is millimetres. Two known displacement points give you
    scale and offset.
@@ -173,39 +276,62 @@ against a fresh capture.
 
 ## Phase 7 — Into the car
 
-The bench configuration **is** the car configuration. The 944 is pre-CAN, so the
-iBooster and the monitoring ESP32 form a private 2-node bus — exactly like the
-iDrive bus already in the car.
+The bench bus **is** the car bus. The 944 is pre-CAN, so the iBooster and whatever
+monitors it form a private 2-node bus — exactly like the iDrive bus already there.
 
-- 120R at both ends stays required.
-- The ESP32 must stay in **ACK mode permanently**, or the booster goes bus-off in
-  service. This is not a bench-only concern.
-- Add the udev rule in `tools/99-ibooster.rules` to pin the board to
-  `/dev/ibooster` on the HVAC Pi's hub, alongside `/dev/idrive`, `/dev/lighting`
-  and the two gauge panels. Pin by MAC — adding the hub already reshuffled
-  enumeration once on that Pi.
-- **Settled 2026-08-06 — display and logging only, nothing actuates.** Brake lights
-  stay on the mechanical pedal switch. Because no output depends on a frame
-  arriving, best-effort transport is acceptable throughout.
-- Data goes to the **HVAC Pi over USB CDC as the primary sink** (logging is the
-  payoff), and to **gauge panel B over ESP-NOW** as a status indicator. Show the
-  fault/status state, not a live stroke needle.
+Settled already:
+
+- **Display and logging only, nothing actuates** (2026-08-06). Brake lights stay on
+  the mechanical pedal switch. Because no output depends on a frame arriving,
+  best-effort transport is acceptable throughout — and Pi flakiness costs a stale
+  pixel, nothing more.
+- **120R at both ends stays required**, in the car as much as on the bench.
+- **ACK mode permanently.** Listen-only in service would drive the booster bus-off.
+  This is not a bench-only concern.
+- **Show fault/status, not a live stroke needle.** The driver is pressing the pedal
+  and already knows where it is. Stroke stays a logging and replay signal.
 - Panel B's firmware does not exist yet — `slave_app.h` was never assembled into a
   `gauges_slave` sketch, which is why `/dev/gauges2` refuses to flash. Fold the
   brake indicator in while writing it. Fitting a third element beside AFR and
   BATTERY on a 180x640 strip is the real constraint.
-- Write `ibooster_monitor` for the car; leave `ibooster_sniffer` as the bench tool.
-  It cannot be written before Phase 6 confirms where the signals actually live.
+
+### Open decision: dongle-on-Pi vs dedicated ESP32
+
+Deferred deliberately — it depends on the frame rate measured in **Phase 3**.
+
+| | **A — CANable on the Pi** | **B — ESP32 + transceiver** |
+|---|---|---|
+| Path | dongle → Pi USB → SocketCAN → backend → panel B over its existing USB link | ESP32 → USB CDC to Pi, → ESP-NOW to panel B |
+| Boards added | none | one, plus firmware to maintain |
+| ESP-NOW hop | not needed | yes |
+| Cost | Pi backend chews every frame, alongside HVAC, iDrive, lighting, dashboard and kiosk | isolated MCU, boots in <1s, filters to the 2 signals that matter |
+
+**Criterion:** if the booster's traffic is modest, take **A** — it deletes a board
+and an ESP-NOW hop, and SocketCAN is far better tooled. If it emits hundreds of
+frames a second, take **B**; the Pi is already the busiest thing in the car and
+should not be parsing a firehose to extract two signals.
+
+If **B**: write `ibooster_monitor` (leave `ibooster_sniffer` as the bench tool), and
+add the udev rule in `tools/99-ibooster.rules` to pin the board to `/dev/ibooster`
+alongside `/dev/idrive`, `/dev/lighting` and the two gauge panels. Pin by MAC —
+adding the hub already reshuffled enumeration once on that Pi.
+
+Either way, `ibooster_monitor` cannot be written before Phase 6 confirms where the
+signals actually live.
 
 ---
 
 ## Open questions carried forward
 
+- Which firmware is on the dongle — slcan or candleLight? (Phase -1)
+- Is `R120` a solder jumper or a switch, and which state is it in? (Phase -1)
 - Travel sensor: integrated or separate connector? (Phase 0)
 - Does it transmit at all on pins 1+9 alone? (Phase 2)
+- **Total frame rate** — decides the Phase 7 architecture. (Phase 3)
 - Does it assist with no vehicle CAN present? (Phase 4)
 - Peak current during a full apply? (Phase 4)
 - Which physical bus carries the useful stroke signal on the Tesla firmware? (Phase 5)
+- Dongle-on-Pi or dedicated ESP32 in the car? (Phase 7, gated on Phase 3)
 
 ---
 

@@ -32,7 +32,23 @@ count as refusals. The device under test is a brake actuator; keep it that way.
 
 Link-layer **ACK** is a different thing and is required — see below.
 
-## Quick start
+## Bench interface
+
+Primary is a **CANable clone (Jhoinrch RH02) USB-CAN dongle** — owned, purpose-built,
+nothing to flash. Run it on the Pi if it carries candleLight firmware: SocketCAN
+unlocks `can-utils`, and `cansniffer` highlights changing bytes live, which is close
+to the ideal tool for the Phase 5 stroke sweep.
+
+`ibooster_sniffer` below is the ESP32 fallback. It is written and compiling, but
+nothing needs ordering for it unless the dongle disappoints.
+
+⚠️ **Not the MCP2551** — 5V-only, and it fails against a 3.3V S3 in both directions.
+See [CLAUDE.md](CLAUDE.md).
+
+⚠️ **`R120` inverts between buses** — ON for the iBooster, OFF when tapping the
+iDrive bus in Phase -1. Both are 500 kbps 2-node buses. Label the dongle.
+
+## Quick start (ESP32 fallback)
 
 Build (isolated v3 toolchain, esp32 core 3.3.10):
 
@@ -98,4 +114,8 @@ This also closes the long-open "ESP32 slcan firmware" TODO in the canclaude proj
 
 Firmware v1.0.0 compiles clean (323426 bytes flash, 22716 bytes RAM, zero warnings).
 **Not yet run against hardware** — the booster and the 26-pin connector are still
-inbound. Phase 0 begins when the unit lands.
+inbound.
+
+**Phase -1 can start now**, without the booster: point the dongle at the iDrive bus
+and validate the whole chain, so that when the booster arrives and something looks
+wrong you already know it is the booster and not your tooling.

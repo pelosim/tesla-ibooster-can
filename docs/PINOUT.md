@@ -41,21 +41,34 @@ identify each bus by **what it carries**, not by which pin it arrived on.
 
 ## Bench wiring (derived from the hypotheses above)
 
-    iBooster pin 1  ── fuse ──  +12V        (battery for Phase 4+, not a bench PSU)
-    iBooster pin 9  ─────────── GND ─┬── ESP32 GND
-                                     └── SN65HVD230 GND
-    iBooster pin 20 ── fuse ──  +12V        (Phase 4 only — motor becomes live)
+Primary: the CANable clone (Jhoinrch RH02), screw terminals CANH / GND / CANL.
 
-    iBooster CAN-H ──┬── SN65HVD230 CANH
+    iBooster pin 1  ── fuse ──  +12V     (battery for Phase 4+, not a bench PSU)
+    iBooster pin 9  ─────────── GND ──── CANable GND
+    iBooster pin 20 ── fuse ──  +12V     (Phase 4 only — motor becomes live)
+
+    iBooster CAN-H ──┬── CANable CANH    (R120 ON at the dongle)
                      └── 120R ──┐
-    iBooster CAN-L ──┬── SN65HVD230 CANL
-                     └───────────┘         (second 120R is on the breakout)
+    iBooster CAN-L ──┬── CANable CANL
+                     └───────────┘       (loose 120R at the booster end)
 
+Fallback, if the ESP32 path is ever taken up:
+
+    SN65HVD230 CANH/CANL/GND  as above
     SN65HVD230 CTX ── ESP32 GPIO4
     SN65HVD230 CRX ── ESP32 GPIO8
     SN65HVD230 3V3 ── ESP32 3V3
 
 Unpowered sanity check before applying power: **H-to-L reads ~60R.**
+
+⚠️ **R120 inverts between the two buses you will touch.** ON for the iBooster
+(2 nodes, booster terminates neither end); **OFF** when tapping the iDrive bus in
+Phase -1 (already terminated both ends — you would be a third). Both are 500 kbps
+2-node buses, so label the dongle rather than trusting memory.
+
+⚠️ **Not the MCP2551.** 5V-only: RXD swings to 5V into a non-5V-tolerant S3 GPIO,
+and TXD's 3.5V threshold sits above the 3.3V the S3 drives — a marginal high read as
+dominant jams the bus. SN65HVD230 or TJA1051T/3 only.
 
 ---
 
