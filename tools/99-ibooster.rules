@@ -1,0 +1,24 @@
+# ── iBooster CAN sniffer ─────────────────────────────────────────────
+#
+# NOT a standalone rules file. The canonical one on the HVAC Pi is
+# /etc/udev/rules.d/99-espressif.rules (source of truth:
+# ~/Desktop/Claude/idrive-controller/tools/99-espressif.rules).
+# Add the SYMLINK line below to THAT file — do not install this one
+# alongside it, or the ModemManager-ignore rules end up duplicated.
+#
+# Why pin by MAC: the ESP32-S3 reports its MAC as the USB serial, and
+# adding the hub already reshuffled ttyACM numbering once on this Pi.
+# Matching on vendor alone races.
+#
+# ⚠ TODO — fill in the sniffer's MAC before installing.
+#   Pick a SPARE ESP32-S3. Do NOT reuse D0:CF:13:24:DB:B8: that is the
+#   in-car iDrive board, whose 20 ms keep-alive is load-bearing.
+#
+#   Read the MAC with either:
+#     macOS : ioreg -p IOUSB -l | grep -i "USB Serial Number"
+#     Pi    : udevadm info -a -n /dev/ttyACM0 | grep -m1 'ATTRS{serial}'
+#
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{serial}=="XX:XX:XX:XX:XX:XX", SYMLINK+="ibooster", MODE="0666"
+
+# Reload after editing the real file:
+#   sudo udevadm control --reload-rules && sudo udevadm trigger

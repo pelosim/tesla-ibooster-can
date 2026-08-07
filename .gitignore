@@ -1,0 +1,10 @@
+# Arduino build output
+build/
+*/build/
+
+# Captures — can get large, and hold vehicle-specific data
+logs/*
+!logs/.gitkeep
+
+# macOS
+.DS_Store
