@@ -184,8 +184,18 @@ iDrive bus already in the car.
   `/dev/ibooster` on the HVAC Pi's hub, alongside `/dev/idrive`, `/dev/lighting`
   and the two gauge panels. Pin by MAC — adding the hub already reshuffled
   enumeration once on that Pi.
-- Decide where booster data surfaces: the HVAC dashboard, or one of the gauge
-  panels over ESP-NOW.
+- **Settled 2026-08-06 — display and logging only, nothing actuates.** Brake lights
+  stay on the mechanical pedal switch. Because no output depends on a frame
+  arriving, best-effort transport is acceptable throughout.
+- Data goes to the **HVAC Pi over USB CDC as the primary sink** (logging is the
+  payoff), and to **gauge panel B over ESP-NOW** as a status indicator. Show the
+  fault/status state, not a live stroke needle.
+- Panel B's firmware does not exist yet — `slave_app.h` was never assembled into a
+  `gauges_slave` sketch, which is why `/dev/gauges2` refuses to flash. Fold the
+  brake indicator in while writing it. Fitting a third element beside AFR and
+  BATTERY on a 180x640 strip is the real constraint.
+- Write `ibooster_monitor` for the car; leave `ibooster_sniffer` as the bench tool.
+  It cannot be written before Phase 6 confirms where the signals actually live.
 
 ---
 

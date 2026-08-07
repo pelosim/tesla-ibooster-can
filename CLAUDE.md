@@ -21,6 +21,52 @@ it belongs anywhere near a road car.
 
 Link-layer **ACK is not a command** and is required — see below.
 
+## Key design decision: display and logging only
+**Nothing actuates on this data.** Decided 2026-08-06. Brake lights stay on the
+mechanical pedal switch — they are not driven from decoded pedal position.
+
+This is what makes the rest of the architecture safe to keep simple. Because no
+output depends on a frame arriving, best-effort transport is fine everywhere: a
+dropped ESP-NOW packet costs a stale pixel, not a dark brake light.
+
+If that ever changes, the topology below is **not** adequate and must be redesigned
+— an actuating path would have to be a direct wired output from the sniffer ESP32,
+never via ESP-NOW or the Pi, with the mechanical switch left in place as a parallel
+hardware fallback. Do not incrementally grow into that.
+
+## Data topology
+
+    iBooster ──CAN (private 2-node, 120R both ends)── sniffer ESP32
+                                                        ├── USB CDC → HVAC Pi
+                                                        │     log + state (PRIMARY)
+                                                        └── ESP-NOW → gauge panel B
+                                                              status indicator
+
+The Pi is the primary sink: it is already the state hub for this car, and logging
+is the thing that actually pays off — the useful question in service is "what did
+the booster report just before that pedal felt wrong", not "what is it doing this
+instant". ESP-NOW to panel B is the display leg only.
+
+ESP-NOW is a different radio from CAN and does not touch the read-only story.
+
+**Display content:** the booster's fault/status state is what earns permanent
+screen space, as an indicator rather than a needle. Live stroke is a bench and
+datalog-replay signal — the driver is pressing the pedal and already knows where
+it is. Panel B is a 180x640 strip already carrying AFR and BATTERY, so space, not
+bandwidth, is the binding constraint.
+
+## Two sketches, kept separate
+| Sketch | Role |
+|---|---|
+| `ibooster_sniffer` | Bench. Dumb auditable pipe, slcan, no decode, no transmit path |
+| `ibooster_monitor` | Car. Decodes confirmed signals, publishes to Pi + panel B. **Not yet written** |
+
+Same split as `ir_capture` vs `idrive_controller`. Do not merge them — the bench
+sketch's value is that it is small enough to audit at a glance.
+
+`ibooster_monitor` cannot be written until Phase 6 confirms actual signal
+locations. Anything earlier would be encoding guesses.
+
 ## What
 | Path | Contents |
 |---|---|

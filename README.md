@@ -16,6 +16,14 @@ private CAN bus, nothing more.
 3. **[docs/PINOUT.md](docs/PINOUT.md)** — hypothesis table + bench wiring.
 4. **[CLAUDE.md](CLAUDE.md)** — conventions, toolchain, the rules that matter.
 
+## Scope: display and logging only
+
+Nothing actuates on this data. Brake lights stay on the mechanical pedal switch.
+Data goes to the HVAC Pi over USB (primary, for logging) and to gauge panel B over
+ESP-NOW (status indicator). See [CLAUDE.md](CLAUDE.md) for why that decision keeps
+the rest of the architecture simple, and what would have to change if it were ever
+revisited.
+
 ## The firmware cannot transmit
 
 `ibooster_sniffer` has no transmit path. `twai_transmit()` is never called, the
