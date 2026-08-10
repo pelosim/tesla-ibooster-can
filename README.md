@@ -106,6 +106,29 @@ needed — the USB adapter path won. Kept as a fallback.
 
 ---
 
+## On the Raspberry Pi
+
+The Pi's kernel binds CANable adapters natively, so SocketCAN is available and
+`sniff.py` needs **no dependencies at all** there — Python speaks `AF_CAN` directly.
+
+```bash
+sudo apt install can-utils
+git clone https://github.com/pelosim/tesla-ibooster-can.git ~/ibooster
+cd ~/ibooster && ./deploy/install.sh          # persistent names + boot bring-up
+./deploy/verify-buses.sh                      # confirm names match buses
+
+python3 tools/sniff.py --channel can-veh --seconds 30 --log logs/veh.log
+cansniffer can-veh                            # live changing-byte highlighting
+```
+
+`deploy/` pins the two adapters to **`can-veh`** and **`can-yaw`** by USB serial.
+Without that, `can0`/`can1` are assigned in enumeration order and **can swap on
+reboot**, silently mislabelling which bus a capture came from.
+
+⚠️ Those names follow the **adapter**, not the wire. Move a CAN lead between
+adapters and the names become wrong with no warning — hence `verify-buses.sh`, which
+checks by content (whichever bus carries `0x39D` is the vehicle bus).
+
 ## Raw captures are committed
 
 `logs/` holds the actual bench captures behind every claim in `docs/DECODE.md`, so
