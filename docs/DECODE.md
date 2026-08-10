@@ -9,7 +9,13 @@ Anything unverified belongs in `VERIFY_FIRST.md`, not here.
 
 ## `0x39D` — brake pedal stroke — CONFIRMED 2026-08-06
 
-500 kbps · DLC 4 · **25.0 Hz** · the bus on pins 25/16 & 18/10
+500 kbps · DLC 4 · **25.0 Hz**
+
+**Bus: pin 25 = CAN-H, pin 16 = CAN-L.** Confirmed by capture, not just by pairing —
+this exact polarity produced clean frames, so H/L are assigned, not merely paired.
+Under the community naming this is the **"Vehicle CAN"**, and it is consistent with
+their claim that the vehicle bus carries brake input stroke. The second pair
+(18/10, their "YAW CAN") is **not yet captured**.
 
 | Byte | Field | Notes |
 |---|---|---|
@@ -43,6 +49,9 @@ counter/checksum pair. `tools/analyze.py` does this.
 ---
 
 ## Other IDs seen — NOT yet decoded
+
+**All on pins 25/16 only.** The 18/10 pair has not been captured yet, so nothing
+below should be assumed to be the unit's complete output.
 
 At rest with ignition on, four IDs. Under pedal activity, **eleven**.
 

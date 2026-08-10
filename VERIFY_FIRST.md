@@ -43,15 +43,21 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 - [ ] **Pin 20 = ignition / wake, 12V.** *Method:* small 1.5 terminal; confirm by
       behaviour in Phase 4 (assist only appears once it is energised).
 
-- [x] **CONFIRMED 2026-08-06 — pins 25/16 and 18/10 are the two CAN pairs**, both
-      biased at 2.5V, 500 kbps. Community pinout corroborated on a Tesla unit.
+- [x] **CONFIRMED 2026-08-06 — pin 25 = CAN-H, pin 16 = CAN-L.** Not just the
+      pairing: this exact polarity produced clean frames, so H/L are assigned.
+      Carries `0x39D` stroke — the community's "Vehicle CAN".
+- [x] **CONFIRMED 2026-08-06 — pins 18/10 are the second CAN pair**, biased at 2.5V.
+      Pairing confirmed; **H/L polarity NOT yet established** and nothing captured
+      from it. Try CAN-H → 18, CAN-L → 10 first, matching the convention that
+      worked on 25/16.
       ⚠️ Contact at these pins is the failure mode that cost six rounds of
       debugging: verify continuity from the adapter's **screw terminal** through to
       the pin, not just that a clip is sitting on it.
 
-- [ ] **Which bus is which.** The "vehicle" and "YAW" labels come from other
-      platforms. On the Tesla unit, identify each bus by what it carries, not by
-      the pin it arrived on.
+- [~] **Which bus is which.** Pins 25/16 carry the stroke signal, consistent with
+      the community's "Vehicle CAN" label. The 18/10 pair is uncaptured, so its
+      identity rests on community naming alone — treat "YAW" as a label, not a fact,
+      until something is decoded off it.
 
 - [ ] **Pedal travel sensor pins (2, 8, 22, 23).** Gen1 and Gen2 swap which sensor
       sits on which pin, so even the community sources disagree. *Also unresolved:*
