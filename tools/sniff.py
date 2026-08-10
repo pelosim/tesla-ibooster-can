@@ -1,184 +1,212 @@
 #!/usr/bin/env python3
 """
-Read-only CAN sniffer for the iBooster bench, driving a CANable/gs_usb adapter
-(Jhoinrch RH02) over libusb. Works on macOS, which has no SocketCAN.
+Read-only CAN sniffer for the iBooster.
 
-THIS TOOL NEVER TRANSMITS AN APPLICATION FRAME. There is no send path in it --
-GsUsb.send() is never called. See CLAUDE.md for why that matters here.
+THIS TOOL NEVER TRANSMITS AN APPLICATION FRAME. There is no send path in it.
+See CLAUDE.md for why that matters when the device under test is a brake actuator.
 
-    listen  fully passive, does not even ACK. Confirms bitrate/polarity.
-            On a 2-node bus the booster will retransmit unACKed and eventually
-            go bus-off, so expect traffic to stop. That is the ACK trap, not
-            dead hardware.
-    ack     ACKs at the link layer, sends nothing. This is what "read-only"
-            means in practice and what a sustained capture needs.
+Two backends, picked automatically:
+
+  SocketCAN (Linux)   --channel can0. Zero dependencies -- Python's socket module
+                      speaks AF_CAN natively. This is the path on the Pi.
+  gs_usb   (macOS)    --index 0. Drives a CANable/candleLight adapter over libusb,
+                      because macOS has no SocketCAN. Needs gs_usb + pyusb.
+
+Mode differs between the two, and it matters:
+
+  SocketCAN   listen-only is a property of the *interface*, set with `ip link`,
+              not by this program. It reports whichever mode the link is in.
+  gs_usb      --mode listen|ack is set here, per capture.
+
+Either way: on a 2-node bus, listen-only produces a retransmission storm that hides
+most of the traffic. Capture in ACK mode. ACK is a link-layer bit, not a command.
 
 Usage:
-    python3 sniff.py --mode listen --seconds 20
-    python3 sniff.py --mode ack --log logs/vehicle-baseline.log
+    python3 sniff.py --channel can0 --seconds 30 --log logs/yaw.log
+    python3 sniff.py --mode ack --seconds 30 --log logs/veh.log     # macOS
     python3 sniff.py --list
 """
 import argparse
 import os
 import platform
+import struct
 import sys
 import time
 from collections import Counter
 
-import usb.core
-
-# macOS: libusb reports a kernel driver as active on this device and then refuses
-# to detach it (EACCES), which makes gs_usb's start() blow up on every call after
-# the first. There is no kernel driver to detach on Darwin, so skipping the check
-# is correct rather than a workaround. Without this, the first run works and every
-# subsequent one fails -- which reads like flaky hardware.
-if platform.system() == "Darwin":
-    usb.core.Device.is_kernel_driver_active = lambda self, interface: False
-
-    # gs_usb's start() calls a USB-level reset() to allow restarting. On macOS that
-    # re-enumerates the adapter and invalidates every existing handle, including the
-    # one scan() hands back afterwards -- so the second start() in a process dies
-    # with "No such device". stop() already issues a device-level CAN reset via
-    # control transfer, which is the part that actually matters, so dropping the USB
-    # reset is safe here and makes multiple start/stop cycles work.
-    usb.core.Device.reset = lambda self: None
-
-from gs_usb.gs_usb import GsUsb
-from gs_usb.gs_usb_frame import GsUsbFrame
-from gs_usb.constants import GS_CAN_MODE_LISTEN_ONLY, GS_CAN_MODE_NORMAL
+CAN_EFF_FLAG = 0x80000000
+CAN_RTR_FLAG = 0x40000000
+CAN_ERR_FLAG = 0x20000000
+CAN_SFF_MASK = 0x000007FF
+CAN_EFF_MASK = 0x1FFFFFFF
 
 
-def acquire(index=0, retries=8, delay=0.4):
-    """Get a fresh device handle, retrying while the adapter re-enumerates."""
-    for _ in range(retries):
+# ── SocketCAN backend (Linux, no dependencies) ────────────────────────────────
+class SocketCanReader:
+    name = "socketcan"
+
+    def __init__(self, channel):
+        import socket
+        self.channel = channel
+        self.sock = socket.socket(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
         try:
-            devs = GsUsb.scan()
-            if devs and index < len(devs):
-                return devs[index]
-        except usb.core.USBError:
-            pass
-        time.sleep(delay)
-    return None
+            self.sock.bind((channel,))
+        except OSError as e:
+            raise SystemExit(
+                f"Cannot bind {channel}: {e}\n"
+                f"Bring it up first:\n"
+                f"  sudo ip link set {channel} type can bitrate 500000\n"
+                f"  sudo ip link set {channel} up")
+        self.sock.settimeout(0.2)
+
+    def link_mode(self):
+        """Report the interface's real mode -- this program cannot change it."""
+        try:
+            import subprocess
+            out = subprocess.run(["ip", "-details", "link", "show", self.channel],
+                                 capture_output=True, text=True, timeout=4).stdout
+        except Exception:
+            return "unknown"
+        if "listen-only" in out:
+            return "LISTEN-ONLY (set on the interface)"
+        return "normal — ACKs, transmits nothing"
+
+    def read(self):
+        """-> (arbitration_id, data) or None on timeout."""
+        import socket as _s
+        try:
+            frame = self.sock.recv(16)
+        except (_s.timeout, TimeoutError):
+            return None
+        can_id, dlc = struct.unpack("=IB3x", frame[:8])
+        if can_id & CAN_ERR_FLAG:
+            return None
+        mask = CAN_EFF_MASK if can_id & CAN_EFF_FLAG else CAN_SFF_MASK
+        return can_id & mask, frame[8:8 + min(dlc, 8)]
+
+    def close(self):
+        self.sock.close()
 
 
-def sweep(index, rates=(500000, 250000, 125000, 1000000, 800000, 100000, 50000)):
-    """Passive bitrate sweep. Never transmits -- listen-only throughout, so a
-    wrong guess cannot disturb the bus."""
-    print("# passive bitrate sweep, listen-only throughout\n")
-    hits = []
-    frame = GsUsbFrame()
-    for rate in rates:
-        # Re-acquire every iteration: gs_usb's start() calls reset(), which
-        # re-enumerates the adapter on macOS and invalidates the old handle.
-        # Reusing it gives "No such device" on the second rate.
-        dev = acquire(index)
-        if dev is None:
-            print("Lost the adapter mid-sweep. Unplug/replug and re-run.",
-                  file=sys.stderr)
-            return 1
-        dev.set_bitrate(rate)
-        dev.start(GS_CAN_MODE_LISTEN_ONLY)
-        n, ids, end = 0, set(), time.time() + 3.0
-        while time.time() < end:
-            if dev.read(frame, 100):
-                n += 1
-                ids.add(frame.arbitration_id)
-        dev.stop()
-        flag = "  <-- TRAFFIC" if n else ""
-        print(f"{rate:>8} bps: {n:5d} frames, {len(ids):3d} ids{flag}")
-        if n:
-            hits.append((rate, n, sorted(ids)))
-    if hits:
-        print("\nTraffic found:")
-        for rate, n, ids in hits:
-            print(f"  {rate} bps -> {n} frames, IDs "
-                  f"{', '.join(f'{i:X}' for i in ids[:12])}")
-    else:
-        print("\nSilent at every standard bitrate. The bus is not being driven.")
-        print("Check, in this order: common ground, polarity, then ignition.")
+# ── gs_usb backend (macOS, over libusb) ───────────────────────────────────────
+class GsUsbReader:
+    name = "gs_usb"
+
+    def __init__(self, index, bitrate, listen_only):
+        import usb.core
+        if platform.system() == "Darwin":
+            # macOS reports a kernel driver as active on this device and then refuses
+            # to detach it (EACCES), and gs_usb's start() does a USB-level reset that
+            # re-enumerates the adapter, invalidating every handle including the one
+            # scan() hands back next. Without both stubs the first capture in a
+            # process works and every later one fails -- which reads as flaky hardware.
+            usb.core.Device.is_kernel_driver_active = lambda self, i: False
+            usb.core.Device.reset = lambda self: None
+        from gs_usb.gs_usb import GsUsb
+        from gs_usb.gs_usb_frame import GsUsbFrame
+        from gs_usb.constants import GS_CAN_MODE_LISTEN_ONLY, GS_CAN_MODE_NORMAL
+        self._Frame = GsUsbFrame
+        devs = GsUsb.scan()
+        if not devs:
+            raise SystemExit("No gs_usb adapter found.")
+        if index >= len(devs):
+            raise SystemExit(f"--index {index} but only {len(devs)} adapter(s).")
+        self.dev = devs[index]
+        if not self.dev.set_bitrate(bitrate):
+            raise SystemExit("Failed to set bitrate.")
+        self.listen_only = listen_only
+        self.dev.start(GS_CAN_MODE_LISTEN_ONLY if listen_only else GS_CAN_MODE_NORMAL)
+        self.frame = GsUsbFrame()
+
+    def link_mode(self):
+        return ("LISTEN-ONLY (passive, no ACK)" if self.listen_only
+                else "normal — ACKs, transmits nothing")
+
+    def read(self):
+        if self.dev.read(self.frame, 100):
+            return self.frame.arbitration_id, bytes(self.frame.data[:self.frame.can_dlc])
+        return None
+
+    def close(self):
+        self.dev.stop()
+
+
+def list_adapters():
+    if platform.system() == "Linux":
+        import glob
+        found = [os.path.basename(p) for p in sorted(glob.glob("/sys/class/net/can*"))]
+        print("SocketCAN interfaces:", ", ".join(found) if found else "none")
+        print("\nBring one up with:")
+        print("  sudo ip link set can0 type can bitrate 500000 && sudo ip link set can0 up")
+        return 0
+    try:
+        from gs_usb.gs_usb import GsUsb
+        for i, d in enumerate(GsUsb.scan()):
+            print(f"[{i}] {d}")
+    except ImportError:
+        print("gs_usb not installed: pip install gs_usb pyusb", file=sys.stderr)
+        return 1
     return 0
 
 
 def main():
     ap = argparse.ArgumentParser(description="Read-only iBooster CAN sniffer")
-    ap.add_argument("--mode", choices=["listen", "ack"], default="listen")
+    ap.add_argument("--channel", help="SocketCAN interface, e.g. can0 (Linux)")
+    ap.add_argument("--index", type=int, default=0, help="gs_usb adapter index (macOS)")
+    ap.add_argument("--mode", choices=["listen", "ack"], default="ack",
+                    help="gs_usb only; on SocketCAN the interface decides")
     ap.add_argument("--bitrate", type=int, default=500000)
-    ap.add_argument("--index", type=int, default=0,
-                    help="which adapter, if both RH02s are plugged in")
     ap.add_argument("--seconds", type=float, default=0, help="0 = until Ctrl-C")
-    ap.add_argument("--log", help="candump-format log (SavvyCAN can read it)")
-    ap.add_argument("--quiet", action="store_true",
-                    help="stats line only, no per-frame output")
-    ap.add_argument("--list", action="store_true", help="list adapters and exit")
-    ap.add_argument("--sweep", action="store_true",
-                    help="try common bitrates, passively, ~3s each")
+    ap.add_argument("--log", help="candump-format log (SavvyCAN reads it)")
+    ap.add_argument("--quiet", action="store_true", help="stats line only")
+    ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
 
-    if args.sweep:
-        return sweep(args.index)
+    if args.list:
+        return list_adapters()
 
-    devs = GsUsb.scan()
-    if args.list or not devs:
-        for i, d in enumerate(devs):
-            print(f"[{i}] {d}")
-        if not devs:
-            print("No gs_usb adapter found. Check the cable, then re-run.",
-                  file=sys.stderr)
+    if args.channel:
+        rdr = SocketCanReader(args.channel)
+        src = args.channel
+    else:
+        if platform.system() == "Linux":
+            print("On Linux, pass --channel can0 (SocketCAN). "
+                  "Run --list to see interfaces.", file=sys.stderr)
             return 1
-        return 0
-
-    if args.index >= len(devs):
-        print(f"--index {args.index} but only {len(devs)} adapter(s) found.",
-              file=sys.stderr)
-        return 1
-
-    dev = devs[args.index]
-    if not dev.set_bitrate(args.bitrate):
-        print("Failed to set bitrate.", file=sys.stderr)
-        return 1
-
-    flags = GS_CAN_MODE_LISTEN_ONLY if args.mode == "listen" else GS_CAN_MODE_NORMAL
-    dev.start(flags)
+        rdr = GsUsbReader(args.index, args.bitrate, args.mode == "listen")
+        src = f"adapter {args.index}"
 
     logf = None
     if args.log:
-        os.makedirs(os.path.dirname(os.path.abspath(args.log)), exist_ok=True)
+        d = os.path.dirname(os.path.abspath(args.log))
+        if d:
+            os.makedirs(d, exist_ok=True)
         logf = open(args.log, "w")
 
-    banner = "LISTEN-ONLY (passive, no ACK)" if args.mode == "listen" \
-        else "ACK MODE (acknowledges, transmits nothing)"
-    print(f"# {banner} @ {args.bitrate} bps, adapter {args.index}")
+    print(f"# {rdr.name} on {src} @ {args.bitrate} bps")
+    print(f"# mode: {rdr.link_mode()}")
     print("# Ctrl-C to stop and print the ID inventory.\n")
 
-    counts = Counter()
-    first_seen = {}
-    last_data = {}
-    byte_min = {}   # id -> [min per byte position]
-    byte_max = {}   # id -> [max per byte position]
-    total = 0
-    t0 = time.time()
-    t_stat = t0
-    prev_total = 0
+    counts, first_seen, last_data = Counter(), {}, {}
+    byte_min, byte_max = {}, {}
+    total, prev_total = 0, 0
+    t0 = t_stat = time.time()
 
-    frame = GsUsbFrame()
     try:
         while True:
             now = time.time()
             if args.seconds and now - t0 >= args.seconds:
                 break
-
-            if dev.read(frame, 100):
+            got = rdr.read()
+            if got:
+                cid, data = got
                 total += 1
-                cid = frame.arbitration_id
-                data = bytes(frame.data[:frame.can_dlc])
                 counts[cid] += 1
                 first_seen.setdefault(cid, now - t0)
                 changed = last_data.get(cid) is not None and last_data[cid] != data
                 last_data[cid] = data
-
                 if cid not in byte_min:
-                    byte_min[cid] = list(data)
-                    byte_max[cid] = list(data)
+                    byte_min[cid], byte_max[cid] = list(data), list(data)
                 else:
                     lo, hi = byte_min[cid], byte_max[cid]
                     for i, b in enumerate(data):
@@ -187,23 +215,20 @@ def main():
                                 lo[i] = b
                             if b > hi[i]:
                                 hi[i] = b
-
                 if not args.quiet:
-                    mark = "*" if changed else " "
-                    print(f"{now - t0:9.4f} {cid:03X}{mark} [{frame.can_dlc}] "
-                          f"{data.hex(' ').upper()}")
+                    print(f"{now - t0:9.4f} {cid:03X}{'*' if changed else ' '} "
+                          f"[{len(data)}] {data.hex(' ').upper()}")
                 if logf:
-                    logf.write(f"({now:.6f}) can0 {cid:03X}#{data.hex().upper()}\n")
+                    logf.write(f"({now:.6f}) {src} {cid:03X}#{data.hex().upper()}\n")
 
             if now - t_stat >= 1.0:
-                fps = (total - prev_total) / (now - t_stat)
                 print(f"--- {now - t0:6.1f}s  frames={total}  ids={len(counts)}  "
-                      f"{fps:6.1f} fps", flush=True)
+                      f"{(total - prev_total) / (now - t_stat):6.1f} fps", flush=True)
                 prev_total, t_stat = total, now
     except KeyboardInterrupt:
         print()
     finally:
-        dev.stop()
+        rdr.close()
         if logf:
             logf.close()
 
@@ -211,11 +236,11 @@ def main():
     print(f"\n=== {total} frames, {len(counts)} unique IDs, {elapsed:.1f}s, "
           f"{total / elapsed if elapsed else 0:.1f} fps total ===")
     if not total:
-        print("\nNo frames. Before assuming wrong pins, rule out:")
-        print("  - polarity: swap CANH/CANL and retry (10 seconds, most likely cause)")
-        print("  - the booster may need ignition (pin 20) before it talks -- Phase 4")
-        print("  - in listen mode the ACK trap can stop traffic after one frame;")
-        print("    re-run with --mode ack")
+        print("\nNo frames. Check, in this order:")
+        print("  1. continuity from the adapter's SCREW TERMINAL through to the pin")
+        print("     -- a clip resting on an exposed pin looks connected and often isn't")
+        print("  2. polarity: swap CANH/CANL")
+        print("  3. that the interface is up at 500000 and NOT listen-only")
         return 0
 
     print(f"\n{'ID':>6} {'count':>8} {'rate/s':>8}  first@   last bytes")
@@ -223,23 +248,15 @@ def main():
         print(f"{cid:6X} {n:8d} {n / elapsed:8.1f}  {first_seen[cid]:6.2f}  "
               f"{last_data[cid].hex(' ').upper()}")
 
-    # Per-byte ranges. During a stroke sweep the byte tracking the pushrod shows a
-    # wide span while everything else stays fixed -- that is the whole decode.
+    # During a stroke sweep the byte tracking the pushrod shows a wide span while
+    # everything else stays fixed -- that is the whole decode.
     print("\nPer-byte range (min..max). '.' = never changed:")
     for cid, _ in counts.most_common():
         lo, hi = byte_min[cid], byte_max[cid]
-        cells = []
-        for i in range(len(lo)):
-            if lo[i] == hi[i]:
-                cells.append(f"  .{lo[i]:02X} ")
-            else:
-                cells.append(f"{lo[i]:02X}-{hi[i]:02X}")
+        cells = [f"  .{lo[i]:02X} " if lo[i] == hi[i] else f"{lo[i]:02X}-{hi[i]:02X}"
+                 for i in range(len(lo))]
         movers = sum(1 for i in range(len(lo)) if lo[i] != hi[i])
-        flag = "  <-- MOVING" if movers else ""
-        print(f"  {cid:03X}  {' '.join(cells)}{flag}")
-
-    print("\nRecord the total fps in VERIFY_FIRST.md -- it decides the Phase 7 "
-          "car-side architecture.")
+        print(f"  {cid:03X}  {' '.join(cells)}{'  <-- MOVING' if movers else ''}")
     return 0
 
 
