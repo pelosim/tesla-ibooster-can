@@ -35,15 +35,30 @@ b2:b3 = stroke, uint16 LITTLE-endian
 mm = (counts − 3.3) / 320.68        rest ≈ 264 · end stop 13606 = 43.4 mm
 ```
 
-### `0x38E` — position, YAW bus, 99.7 Hz, DLC 8
+### `0x38E` — position + status, YAW bus, 99.7 Hz, DLC 8
 
 ```
-b1    = alive counter, 0x20..0x2F (low nibble counts)
-b3:b4 = position, uint16 LITTLE-endian          rest 4416 (0x1140)
+b1       = alive counter, 0x20..0x2F (low nibble counts)
+position = b3 | ((b4 & 0x0F) << 8)     12-bit, rest 320, full ~3052
+status   = b4 >> 4                     1 = healthy, 2 = fault
 ```
 
 `b3` alone **wraps** — it is the low byte, not the whole field. Correlates with
 `0x39D` at **r = 0.9999** over 15,296 matched samples.
+
+### Fault signalling
+
+Confirmed by disconnecting the travel sensor:
+
+| Signal | Healthy | Fault |
+|---|---|---|
+| `0x38E` `b4 >> 4` | `1` | **`2`** |
+| `0x39D` stroke | live | **pinned to 16354**, checksum still valid |
+| `0x38F` `b2` | `0xE2` | `0xCC` |
+
+**There is no status *message*** — status is a field inside the position messages.
+That is why looking for a dedicated fault frame found nothing. Use `0x38E b4 >> 4`:
+a two-value enum at 99.7 Hz, in the same byte as the position it qualifies.
 
 Full signal definitions: **[docs/DECODE.md](docs/DECODE.md)**.
 Plotted data: **[report/index.html](report/index.html)** (self-contained, opens offline).
@@ -156,8 +171,8 @@ vehicle-identifying data.
 
 ## Still open
 
-- **No periodic status or fault message has been found on either bus.** Everything
-  decoded is position or events.
+- Whether the fault **latches** until a power cycle, or self-clears when the sensor
+  is restored. Evidence leans latching but is not conclusive.
 - `0x33D` — a post-brake event message, all-`FF` 99.8% of the time, fires ~0.8 s
   after release. Three samples is not enough to decode the payload.
 - `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` — fire together within ~100 ms, event

@@ -15,8 +15,7 @@ Anything unverified belongs in `VERIFY_FIRST.md`, not here.
 **Bus: pin 25 = CAN-H, pin 16 = CAN-L.** Confirmed by capture, not just by pairing —
 this exact polarity produced clean frames, so H/L are assigned, not merely paired.
 Under the community naming this is the **"Vehicle CAN"**, and it is consistent with
-their claim that the vehicle bus carries brake input stroke. The second pair
-(18/10, their "YAW CAN") is **not yet captured**.
+their claim that the vehicle bus carries brake input stroke.
 
 | Byte | Field | Notes |
 |---|---|---|
@@ -151,17 +150,23 @@ At rest: `77 2B 00 40 11 00 00 00`
 | `b1` | alive counter | `0x20`..`0x2F` — low nibble counts, upper nibble fixed at 2 |
 | `b2` | — | constant `00` at rest |
 | `b3` | position, **LOW byte** | `0x40` at settled rest; wraps, because it is not the whole field |
-| `b4` | position, **HIGH byte** | `0x11` at settled rest |
-| `b4` | — | constant `11` at rest |
+| `b4` | **low nibble** = position high bits · **high nibble** = STATUS | `0x11` at settled rest |
 | `b5:b7` | — | constant `00` |
 
-### `b3:b4` = position, uint16 LITTLE-endian — CONFIRMED
+### position = 12-bit, and `b4`'s high nibble is STATUS — CORRECTED 2026-08-10
 
-`b3` alone wraps because **it is the low byte**. `b4` is the high byte. Visible
-directly in the boot trace: across a fast push `b4` climbs `17->18->19->1A->1B` and
-walks straight back down `1A->19->...->11` on release, once per `b3` wrap.
+    position = b3 | ((b4 & 0x0F) << 8)     12-bit, rest 320, full travel ~3052
+    status   = b4 >> 4                     1 = healthy, 2 = fault
 
-    position = b3 | (b4 << 8)      rest 4416 (0x1140), full travel ~7148
+`b3` alone wraps because it is the low byte. Visible directly in the boot trace:
+across a fast push the low nibble climbs `1->2->...->B` and walks back down on
+release, once per `b3` wrap.
+
+**The high nibble was previously read as part of the position.** It is not. An
+induced sensor fault moved it 1 -> 2 while `b3` did not change at all, shifting the
+old 16-bit reading by exactly `0x1000`. During healthy operation it is pinned at 1,
+so the two interpretations differ only by a constant — which is why the earlier
+16-bit model fitted every healthy capture and still correlated at r=0.9999.
 
 **Validated against the calibrated `0x39D`** on two independent runs:
 
@@ -174,10 +179,11 @@ The two runs agree to **0.13% on slope and 0.12% on intercept** — far tighter 
 either agrees with the ruler, which independently confirms that the run-to-run
 calibration conflict was measurement error and not the sensor.
 
-    mm = 0.015207 * (b3 | b4<<8) - 66.36
+    mm = 0.015207 * (b3 | ((b4 & 0x0F) << 8)) + 1.94
 
-Sanity check: rest 4416 -> 0.79 mm, and 7148 -> 42.3 mm. Both consistent with the
-`0x39D` calibration.
+Sanity check: rest 320 -> 0.79 mm, and 3052 -> 42.3 mm. Both consistent with the
+`0x39D` calibration. (Masking off the status nibble subtracts a constant 4096 counts
+from the old form; the slope is unchanged.)
 
 ### Two corrections
 
@@ -227,6 +233,43 @@ driven, trigger unknown.
 Same header shape: `b0` varies every frame (checksum), `b1` = `0x20`..`0x2F`
 counter. `b2:b4` constant at rest (`E2 53 02`), `b5:b7` zero. Nothing moved at rest —
 needs a pedal sweep before anything can be said.
+
+---
+
+## Fault signalling — CONFIRMED 2026-08-10 by induced fault
+
+Provoked by **disconnecting the travel sensor** with the booster running. Assist
+drops and all three of these change within ~10 ms of each other:
+
+| Signal | Healthy | Fault |
+|---|---|---|
+| **`0x38E` `b4 >> 4`** | `1` | **`2`** |
+| `0x39D` stroke (`b2:b3`) | live, 264..13606 | **pinned to 16354 (`0x3FE2`)** — one single value |
+| `0x38F` `b2` | `0xE2` | `0xCC` |
+
+**`0x39D`'s fault value carries a valid checksum**, so this is deliberate sentinel
+signalling, not corruption. `16354` is also unreachable physically — the end stop is
+13606 — so a consumer can reject it on range alone without knowing the sentinel.
+
+### There is no status *message*
+
+This is why one was never found: **status is a field inside the position messages**,
+not a message of its own. Anything waiting for a dedicated fault frame will wait
+forever.
+
+### Use `0x38E b4 >> 4`
+
+It is the cleanest of the three — a two-value enum at 99.7 Hz, in the same byte as
+the position it qualifies, so a reading and its validity can never be split across
+frames. Belt-and-braces: also reject `0x39D` stroke > 13700.
+
+### Does it latch?
+
+**Probably, but unconfirmed.** Status stayed at `2` for the remaining ~48 s of the
+capture. Position began moving again at t=92.8 s (320 -> 401) while status stayed
+`2`, which suggests the sensor was reconnected and reading while the fault remained
+latched — but whether a reconnect actually happened then is not established. Settle
+it deliberately before designing any dashboard acknowledgement behaviour.
 
 ---
 

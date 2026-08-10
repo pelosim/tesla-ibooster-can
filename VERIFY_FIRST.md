@@ -115,8 +115,11 @@ Ticking a box = replacing the claim with what you actually measured, dated.
       for a retrofit is a feature — it behaves like a conventional booster — but it
       also means the CAN link is strictly observational in both directions.
 
-- [ ] **What does it report with no vehicle present?** Expect fault/degraded flags.
-      Capture them — they identify the status byte for free.
+- [x] **✅ FAULT SIGNALLING FOUND 2026-08-10** — by disconnecting the travel sensor.
+      `0x38E` `b4 >> 4` is a status enum (1 = healthy, 2 = fault); `0x39D` pins its
+      stroke to 16354 with a still-valid checksum; `0x38F` `b2` goes `0xE2` -> `0xCC`.
+      **There is no separate status message** — status lives inside the position
+      frames, which is why looking for one found nothing. See `docs/DECODE.md`.
 
 - [ ] **Does it emit a power-up self-test that moves the pushrod?** Assume yes until
       proven otherwise. Clamp the unit and keep the pushrod path clear.
