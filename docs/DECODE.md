@@ -263,13 +263,47 @@ It is the cleanest of the three — a two-value enum at 99.7 Hz, in the same byt
 the position it qualifies, so a reading and its validity can never be split across
 frames. Belt-and-braces: also reject `0x39D` stroke > 13700.
 
-### Does it latch?
+### It LATCHES — and assist stays off until a power cycle — CONFIRMED
 
-**Probably, but unconfirmed.** Status stayed at `2` for the remaining ~48 s of the
-capture. Position began moving again at t=92.8 s (320 -> 401) while status stayed
-`2`, which suggests the sensor was reconnected and reading while the fault remained
-latched — but whether a reconnect actually happened then is not established. Settle
-it deliberately before designing any dashboard acknowledgement behaviour.
+Sequence, confirmed on the bench:
+
+| Step | Status nibble | `0x38E` position | `0x39D` stroke | Assist |
+|---|---|---|---|---|
+| healthy | `1` | live | live | **on** |
+| sensor disconnected | `2` | — | pinned 16354 | **off** |
+| **sensor reconnected** | **still `2`** | **live again** (320 -> 401) | **still pinned** | **still off** |
+| power cycled | `1` | live | live | **on** |
+
+**Reconnecting the sensor does not clear the fault.** The booster latches into
+no-assist and only a power cycle restores it.
+
+### The two buses disagree after a reconnect
+
+Worth knowing before choosing a source. Once the sensor is restored but the fault is
+still latched, `0x38E` reports **real position again** while `0x39D` stays **pinned
+at the sentinel**. So during a latched fault, `0x38E` is the only source of live
+position.
+
+### `status == 2` means "assist unavailable", not "position invalid"
+
+The reconnect step proves these are different things: position was valid and updating
+while status stayed `2` and assist stayed off. **Do not treat the status nibble as a
+data-validity flag** — it is an assist-availability flag. Judge position validity
+separately, on range.
+
+### ⚠️ Implication for the car
+
+A **momentary** sensor-connector interruption — vibration, corrosion, a marginal
+crimp — latches the booster into **no assist until the ignition is cycled**. The
+pedal becomes very hard, and stays that way, with nothing on a stock dash to explain
+why. In a 40-year-old car with a retrofit harness this is a realistic failure mode,
+not a theoretical one.
+
+Two consequences: the travel-sensor connector deserves better strain relief and
+weatherproofing than convenience suggests, and the panel-B indicator is the only
+thing that would tell the driver what happened — which makes it a real safety
+affordance rather than a nice-to-have. Brakes still work unassisted; they just need
+far more pedal effort.
 
 ---
 

@@ -60,6 +60,18 @@ Confirmed by disconnecting the travel sensor:
 That is why looking for a dedicated fault frame found nothing. Use `0x38E b4 >> 4`:
 a two-value enum at 99.7 Hz, in the same byte as the position it qualifies.
 
+**The fault latches.** Reconnecting the sensor does *not* clear it — the booster
+stays in no-assist until a power cycle. And `status == 2` means **assist
+unavailable**, not *position invalid*: after a reconnect, `0x38E` reports live
+position again while status stays `2` and assist stays off. `0x39D`, meanwhile, stays
+pinned at its sentinel, so `0x38E` is the only live position source during a latched
+fault.
+
+⚠️ **In a car this matters.** A momentary sensor-connector interruption latches the
+booster into no assist until the ignition is cycled — the pedal goes hard and stays
+hard. Brakes still work, they just need far more effort. Strain-relieve that
+connector properly.
+
 Full signal definitions: **[docs/DECODE.md](docs/DECODE.md)**.
 Plotted data: **[report/index.html](report/index.html)** (self-contained, opens offline).
 
@@ -171,8 +183,8 @@ vehicle-identifying data.
 
 ## Still open
 
-- Whether the fault **latches** until a power cycle, or self-clears when the sensor
-  is restored. Evidence leans latching but is not conclusive.
+- Whether faults *other* than a lost travel sensor produce different status codes.
+  Only `1` and `2` have ever been observed.
 - `0x33D` — a post-brake event message, all-`FF` 99.8% of the time, fires ~0.8 s
   after release. Three samples is not enough to decode the payload.
 - `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` — fire together within ~100 ms, event
