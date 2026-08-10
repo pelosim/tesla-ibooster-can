@@ -61,9 +61,60 @@ engages, with the reading held at a floor of ~263 below that:
 
 Both within 2 counts.
 
-⚠️ **Only one point below the dead band was measured**, so this cannot yet
-distinguish a hard floor from a non-linear region near rest. A third hold at ~10 mm
-would settle it. Do not rely on values under ~4 mm meaning anything.
+### ⚠️ Second run contradicts the first — position measurement is the bottleneck
+
+A second capture held at 10/20/30 mm. It does not agree with the first:
+
+| mm | measured counts | run |
+|---|---|---|
+| 10 | 3048.0 | 2 |
+| 20 | 6886.4 | 2 |
+| **21** | **6114.0** | **1** |
+| 30 | 10286.5 | 2 |
+| 42 | 13125.2 | 1 |
+
+**20 mm reads higher than 21 mm.** A monotonic sensor cannot do that, so at least one
+set of physical positions is wrong.
+
+| | counts/mm |
+|---|---|
+| run 1 (21, 42) | 333.87 |
+| run 2 (10, 20, 30) | 361.93 |
+| all five points | 320.68 |
+
+Residuals against the combined fit are +-2 mm and **flip sign by run** rather than
+scattering randomly — the signature of a datum shift between runs, not noise.
+
+**The limiting factor is the ruler, not the CAN data:**
+
+| | precision |
+|---|---|
+| CAN value within a single hold | **+-20 counts = 0.062 mm** |
+| disagreement between runs | **up to 4.4 mm** |
+
+The signal is ~70x more precise than the measurement of it. More captures will not
+help; better instrumentation will.
+
+**Dead band: still unresolved.** The run-1 model predicts 2441 counts at 10 mm; run 2
+measured 3048. That 1.8 mm gap is inside the run-to-run error, so the dead band is
+neither confirmed nor refuted — it is simply swamped.
+
+### To calibrate properly
+
+- **Dial indicator with a fixed datum**, referencing the same feature every time.
+- **One single run covering the whole range** — rest, 5, 10, 20, 30, 40, end stop.
+  The error is *between* runs, not within them, so a single run eliminates it
+  entirely regardless of instrument quality.
+
+### Is this good enough already?
+
+For **display and logging — yes.** The scope is a status indicator, and ~2 mm accuracy
+on pedal travel is far more than that needs. Use the combined fit:
+
+    mm = (counts - 3.3) / 320.68
+
+Chasing better numbers is only worth it if something downstream ever needs absolute
+millimetres, which nothing currently does.
 - Whether `b1` rolling over or a checksum failure ever signals anything meaningful.
 - Whether the 0xA0 constant is fixed or derived from the CAN ID. `0x39D + 3 = 0x3A0`,
   whose low byte is `0xA0` — that is almost certainly a coincidence, but a second
