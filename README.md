@@ -78,11 +78,16 @@ proves the transceivers have power. It proves nothing about the ECU running.
 
 ## Tools
 
-Python, driving a CANable-clone USB-CAN adapter (**candleLight/gs_usb**, `1d50:606f`)
-over libusb — no serial port, and macOS has no SocketCAN.
+Python, against a CANable-clone USB-CAN adapter (**candleLight/gs_usb**, `1d50:606f`).
+Two backends, picked automatically:
+
+- **SocketCAN** (Linux/Pi) — `--channel can-veh`. **No dependencies**; Python speaks
+  `AF_CAN` natively. Preferred.
+- **gs_usb over libusb** (macOS) — `--index 0`. Needed only because macOS has no
+  SocketCAN and the adapter exposes no serial port.
 
 ```bash
-pip install gs_usb pyusb          # plus libusb (brew install libusb)
+pip install gs_usb pyusb          # macOS only; plus brew install libusb
 
 python3 tools/sniff.py --mode ack --seconds 30 --log logs/capture.log
 python3 tools/analyze.py logs/capture.log --id 39D
@@ -91,7 +96,7 @@ python3 tools/plateaus.py logs/capture.log --id 39D --field le23
 
 | Tool | Does |
 |---|---|
-| `tools/sniff.py` | Capture. Listen-only or ACK mode, candump-format logs, per-byte min/max |
+| `tools/sniff.py` | Capture, SocketCAN or gs_usb. candump-format logs, per-byte min/max |
 | `tools/analyze.py` | Finds physical signals by **smoothness × activity**, not by range — a checksum spans 00..FF but jumps randomly; a real signal moves smoothly |
 | `tools/plateaus.py` | Finds held positions for calibration, by spread rather than min/max |
 | `tools/selftest.py` | Positive control between two adapters. **The only file that transmits** — adapter-to-adapter only |
