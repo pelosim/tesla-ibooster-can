@@ -1,7 +1,7 @@
 # VERIFY_FIRST.md
 
 Everything below is **unconfirmed against this actual unit** (Tesla PN
-`1037123-00-B`, 2020 Model S LR). The sources are EV-conversion community work on
+`1037123-00-B`, Gen1, fitment 2016-2020 Model S). The sources are EV-conversion community work on
 *other* iBooster variants — Golf MK8, Yaris, Citroën, Honda CR-V, generic Gen1/Gen2.
 Bosch sells this ECU into many platforms with different firmware and, plausibly,
 different pin assignments.
@@ -56,8 +56,8 @@ Ticking a box = replacing the claim with what you actually measured, dated.
       Pins 25/16 = "Vehicle CAN" (`0x39D` stroke). Pins 18/10 = "YAW CAN"
       (`0x38E`/`0x38F`, the exact IDs the community documented).
 
-- [ ] **Pedal travel sensor pins (2, 8, 22, 23).** Gen1 and Gen2 swap which sensor
-      sits on which pin, so even the community sources disagree. *Also unresolved:*
+- [ ] **Pedal travel sensor pins (2, 8, 22, 23).** This unit is **Gen1**, so the
+      Gen1 mapping applies — but community sources disagree even within a generation. *Also unresolved:*
       whether the Tesla unit's travel sensor is integrated in the pushrod assembly
       or arrives on a separate connector. Establish this before Phase 5 — without
       a valid sensor the booster will fault and the stroke sweep is meaningless.

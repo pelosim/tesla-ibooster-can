@@ -1,121 +1,155 @@
-# ibooster
+# Tesla iBooster — read-only CAN reverse engineering
 
-Read-only CAN reverse-engineering of a **Tesla Model S/X Bosch iBooster**
-(PN `1037123-00-B`, 2020 Model S LR) for the 1987 Porsche 944S restomod.
+Decoding the CAN output of a **Bosch iBooster Gen1** — Tesla PN **`1037123-00-B`**,
+listing fitment **2016–2020 Model S** — so a 1987 Porsche 944S restomod can read
+brake pedal position. **Nothing in this repo ever transmits to the booster.**
 
-The 944 uses the iBooster as a self-contained brake booster. This project only
-**listens** — the goal is brake pedal position and booster status on the car's
-private CAN bus, nothing more.
+Bench bring-up completed 2026-08-06. Everything below is measured on this unit, not
+inherited from other iBooster variants.
 
-## Read these in order
+---
 
-1. **[VERIFY_FIRST.md](VERIFY_FIRST.md)** — every pin number and CAN ID here is a
-   hypothesis from community work on *other* iBooster variants. Nothing has been
-   measured on this unit yet.
-2. **[BENCH_PLAN.md](BENCH_PLAN.md)** — Phase 0 → 7, with exit criteria.
-3. **[docs/PINOUT.md](docs/PINOUT.md)** — hypothesis table + bench wiring.
-4. **[CLAUDE.md](CLAUDE.md)** — conventions, toolchain, the rules that matter.
+## Headline results
 
-## Scope: display and logging only
+**It assists standalone.** 12 V, ground and ignition, with nothing ever transmitted
+to it — no vehicle CAN, no wake frame, no keep-alive. A purely passive monitor is
+viable, so commanding a brake actuator never has to enter the picture.
 
-Nothing actuates on this data. Brake lights stay on the mechanical pedal switch.
-Data goes to the HVAC Pi over USB (primary, for logging) and to gauge panel B over
-ESP-NOW (status indicator). See [CLAUDE.md](CLAUDE.md) for why that decision keeps
-the rest of the architecture simple, and what would have to change if it were ever
-revisited.
+**Both CAN buses found and decoded:**
 
-## The firmware cannot transmit
+| Bus | Pins | Rate | Carries |
+|---|---|---|---|
+| Vehicle | **25 = CAN-H, 16 = CAN-L** | 500 kbps, 36 fps | `0x39D` — 16-bit stroke |
+| YAW | **18 = CAN-H, 10 = CAN-L** | 500 kbps, 143 fps | `0x38E` @ 99.7 Hz, `0x38F` @ 49.8 Hz |
 
-`ibooster_sniffer` has no transmit path. `twai_transmit()` is never called, the
-TWAI TX queue is length 0, and the slcan `t`/`T`/`r`/`R` commands answer BEL and
-count as refusals. The device under test is a brake actuator; keep it that way.
+Power: **pin 1** = 12 V, **pin 9** = GND, **pin 20** = ignition. Neither bus is
+internally terminated.
 
-Link-layer **ACK** is a different thing and is required — see below.
+### `0x39D` — stroke, vehicle bus, 25 Hz, DLC 4
 
-## Bench interface
+```
+b0    = checksum, (b1 + b2 + b3 + 0xA0) & 0xFF   ← holds on 100% of 2250 frames
+b1    = alive counter, +1 mod 16
+b2:b3 = stroke, uint16 LITTLE-endian
 
-Primary is a **CANable clone (Jhoinrch RH02) USB-CAN dongle** — owned, purpose-built,
-nothing to flash. Run it on the Pi if it carries candleLight firmware: SocketCAN
-unlocks `can-utils`, and `cansniffer` highlights changing bytes live, which is close
-to the ideal tool for the Phase 5 stroke sweep.
-
-`ibooster_sniffer` below is the ESP32 fallback. It is written and compiling, but
-nothing needs ordering for it unless the dongle disappoints.
-
-⚠️ **Not the MCP2551** — 5V-only, and it fails against a 3.3V S3 in both directions.
-See [CLAUDE.md](CLAUDE.md).
-
-⚠️ **`R120` inverts between buses** — ON for the iBooster, OFF when tapping the
-iDrive bus in Phase -1. Both are 500 kbps 2-node buses. Label the dongle.
-
-## Quick start (ESP32 fallback)
-
-Build (isolated v3 toolchain, esp32 core 3.3.10):
-
-```bash
-export ARDUINO_DIRECTORIES_DATA=~/.arduino-cli-esp32v3/data \
-       ARDUINO_DIRECTORIES_USER=~/.arduino-cli-esp32v3/user \
-       ARDUINO_DIRECTORIES_DOWNLOADS=~/.arduino-cli-esp32v3/downloads
-arduino-cli compile --warnings all \
-  --fqbn esp32:esp32:esp32s3:USBMode=hwcdc,CDCOnBoot=cdc,FlashSize=16M,PSRAM=opi \
-  ibooster_sniffer
+mm = (counts − 3.3) / 320.68        rest ≈ 264 · end stop 13606 = 43.4 mm
 ```
 
-Then open a terminal on the board and send `h` for human-readable mode, `?` for help.
+### `0x38E` — position, YAW bus, 99.7 Hz, DLC 8
 
-## The ACK trap — the thing that will waste your afternoon
+```
+b1    = alive counter, 0x20..0x2F (low nibble counts)
+b3:b4 = position, uint16 LITTLE-endian          rest 4416 (0x1140)
+```
 
-A CAN node whose frames are never ACKed retransmits forever, climbs its TX error
-counter, goes error-passive, then bus-off. On a 2-node bus a listen-only sniffer
-never ACKs, so **the iBooster talks once and then goes quiet — which looks exactly
-like dead hardware.**
+`b3` alone **wraps** — it is the low byte, not the whole field. Correlates with
+`0x39D` at **r = 0.9999** over 15,296 matched samples.
 
-| Cmd | Mode | Use it for |
+Full signal definitions: **[docs/DECODE.md](docs/DECODE.md)**.
+Plotted data: **[report/index.html](report/index.html)** (self-contained, opens offline).
+
+---
+
+## Three traps that cost real bench time
+
+**1 · Contact at the pins, not the pinout.** Six rounds of debugging — bitrate
+sweeps, polarity swaps, host power, ACK modes — turned out to be a bad connection at
+the booster end. Verify continuity from the adapter's **screw terminal** through to
+the pin. A clip resting on an exposed pin looks connected and often is not.
+
+**2 · Listen-only is unusable on a 2-node bus.** With no ACK the booster's error
+counter climbs 8 per attempt, hits bus-off at ~32 ms, auto-recovers, and repeats.
+Same 12-second window:
+
+| Mode | Frames | Unique IDs |
 |---|---|---|
-| `L` | LISTEN_ONLY — fully passive, no ACK | Confirming the bitrate, once |
-| `O` | NORMAL — ACKs, sends no application frames | Every real capture |
+| listen-only | 1006 fps | **1** |
+| ACK | 37 fps | **4** |
 
-Open `L` first. A sniffer at the wrong bitrate in NORMAL mode emits error frames
-and does genuinely disturb the bus.
+The 1006 fps is a retransmission storm, not a signal — and it **hides three of the
+four IDs**. ACK is a link-layer bit, not a command, so read-only capture still
+acknowledges. **Always capture in ACK mode.** This applies in the car too, wherever
+the booster and your monitor are the only two nodes.
 
-This applies **in the car too**. The 944 is pre-CAN, so the booster and the
-monitoring ESP32 are the only two nodes — the ESP32 must stay in ACK mode
-permanently, and 120R is required at both ends.
+**3 · A powered transceiver idles at 2.5 V even when the ECU is dead.** That reading
+proves the transceivers have power. It proves nothing about the ECU running.
 
-## Serial commands
+---
 
-```
-S6      500 kbps (only rate accepted)   O   open NORMAL (ACK, no app TX)
-C       close                           L   open LISTEN-ONLY (fully passive)
-Z0/Z1   timestamps off/on               F   status flags
-V v N   version / hw / serial           h   toggle HUMAN mode
-?       help                            t T r R   REFUSED — no transmit path
-```
+## Tools
 
-HUMAN mode prints a bus-health line every second even when no frames arrive, so
-bus-off and error-passive are visible instead of looking like silence. It is not
-valid slcan — turn it off before attaching a host tool.
-
-## Host tools
-
-The sniffer speaks slcan, so it drops straight into:
+Python, driving a CANable-clone USB-CAN adapter (**candleLight/gs_usb**, `1d50:606f`)
+over libusb — no serial port, and macOS has no SocketCAN.
 
 ```bash
-# canclaude (python-can, bustype='slcan')
-./.venv/bin/python canclaude.py capture --interface slcan --channel /dev/ibooster
+pip install gs_usb pyusb          # plus libusb (brew install libusb)
+
+python3 tools/sniff.py --mode ack --seconds 30 --log logs/capture.log
+python3 tools/analyze.py logs/capture.log --id 39D
+python3 tools/plateaus.py logs/capture.log --id 39D --field le23
 ```
 
-...as well as can-utils (`slcand`/`candump`) and SavvyCAN for frame diffing and
-graphing a candidate signal against a pedal-position log.
+| Tool | Does |
+|---|---|
+| `tools/sniff.py` | Capture. Listen-only or ACK mode, candump-format logs, per-byte min/max |
+| `tools/analyze.py` | Finds physical signals by **smoothness × activity**, not by range — a checksum spans 00..FF but jumps randomly; a real signal moves smoothly |
+| `tools/plateaus.py` | Finds held positions for calibration, by spread rather than min/max |
+| `tools/selftest.py` | Positive control between two adapters. **The only file that transmits** — adapter-to-adapter only |
 
-This also closes the long-open "ESP32 slcan firmware" TODO in the canclaude project.
+**macOS gotcha, load-bearing:** `sniff.py` stubs `is_kernel_driver_active` to False
+and `Device.reset` to a no-op. Without them the first capture in a process works and
+every later one fails with "No such device", which reads convincingly as flaky
+hardware.
 
-## Status
+`ibooster_sniffer/` is an ESP32-S3 slcan sniffer, written and compiling but never
+needed — the USB adapter path won. Kept as a fallback.
 
-Firmware v1.0.0 compiles clean (323426 bytes flash, 22716 bytes RAM, zero warnings).
-**Not yet run against hardware** — the booster and the 26-pin connector are still
-inbound.
+---
 
-**Phase -1 can start now**, without the booster: point the dongle at the iDrive bus
-and validate the whole chain, so that when the booster arrives and something looks
-wrong you already know it is the booster and not your tooling.
+## Raw captures are committed
+
+`logs/` holds the actual bench captures behind every claim in `docs/DECODE.md`, so
+the decode can be re-derived rather than taken on trust. Bench frames only — no
+vehicle-identifying data.
+
+---
+
+## Docs
+
+| File | What |
+|---|---|
+| **[docs/DECODE.md](docs/DECODE.md)** | Confirmed signal definitions and calibration |
+| **[docs/BENCH_LOG.md](docs/BENCH_LOG.md)** | Dated findings, plus a table of the reasoning errors made along the way |
+| **[docs/PINOUT.md](docs/PINOUT.md)** | Measured pinout, and the unverified remainder |
+| **[VERIFY_FIRST.md](VERIFY_FIRST.md)** | Gate list — what is confirmed vs still hypothesis |
+| **[BENCH_PLAN.md](BENCH_PLAN.md)** | The phased procedure, Phase −1 → 7 |
+
+---
+
+## Still open
+
+- **No periodic status or fault message has been found on either bus.** Everything
+  decoded is position or events.
+- `0x33D` — a post-brake event message, all-`FF` 99.8% of the time, fires ~0.8 s
+  after release. Three samples is not enough to decode the payload.
+- `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` — fire together within ~100 ms, event
+  driven, trigger unknown.
+- `0x38F` (49.8 Hz, YAW) — `b2` and `b3` move; undecoded.
+- Calibration is good to roughly ±2 mm, limited by the ruler rather than the data —
+  the signal repeats to 0.06 mm within a hold. Better would need a dial indicator on
+  a fixed datum and a *single* run across the whole range.
+
+---
+
+## Safety
+
+This is a **brake actuator**. Everything here reads; nothing commands. On the bench,
+clamp it by the mounting studs, keep the pushrod path clear, and use a fused battery
+rather than a current-limited supply once ignition is live — the motor draws enough
+to sag a bench PSU into a brownout that looks like a fault.
+
+Prior art that got the buses and idle values right, on other variants:
+[EVcreate](https://www.evcreate.com/ibooster-can-bus/) ·
+[openinverter wiki](https://openinverter.org/wiki/Bosch_iBooster)
+
+MIT licensed. No affiliation with Tesla or Bosch.

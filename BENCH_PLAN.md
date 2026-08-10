@@ -1,6 +1,6 @@
 # BENCH_PLAN.md — Tesla iBooster read-only CAN bring-up
 
-DUT: Bosch iBooster Gen2 family, Tesla PN `1037123-00-B`, 2020 Model S LR.
+DUT: Bosch iBooster **Gen1**, Tesla PN `1037123-00-B`, fitment 2016-2020 Model S.
 Goal: decode brake pedal position and booster status from CAN, **read-only**.
 
 Read `VERIFY_FIRST.md` before touching anything. Every pin number in this document

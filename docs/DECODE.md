@@ -1,6 +1,7 @@
 # DECODE.md
 
-Confirmed signal definitions for the Tesla iBooster `1037123-00-B`.
+Confirmed signal definitions for the Bosch iBooster **Gen1**, Tesla PN `1037123-00-B`
+(fitment 2016-2020 Model S).
 
 Everything here is **measured on this unit**, not inherited from community sources.
 Anything unverified belongs in `VERIFY_FIRST.md`, not here.

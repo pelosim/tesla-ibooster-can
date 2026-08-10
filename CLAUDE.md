@@ -2,7 +2,7 @@
 
 ## Why
 Reverse-engineer the CAN output of a **Tesla Model S/X Bosch iBooster**
-(PN `1037123-00-B`, off a 2020 Model S LR) so the 1987 Porsche 944S restomod can
+(**Gen1**, PN `1037123-00-B`, fitment 2016-2020 Model S) so the 1987 Porsche 944S restomod can
 read brake pedal position and booster status. Same car as the HVAC, lighting,
 gauge, ignition-display and iDrive projects.
 
@@ -41,17 +41,17 @@ and logging is what actually pays off. The useful question in service is "what d
 the booster report just before that pedal felt wrong", not "what is it doing this
 instant". The display leg is secondary.
 
-The *transport* is an open decision, deferred to Phase 7 and gated on the frame rate
-measured in Phase 3:
+**RESOLVED 2026-08-06 to option A** — the vehicle bus runs at 36 fps, trivial for the
+Pi, so the CANable goes straight onto it. No extra ESP32, no ESP-NOW hop. The two
+options were:
 
     A  iBooster ──CAN── CANable ──USB── Pi ──existing USB link── panel B
     B  iBooster ──CAN── ESP32 ──USB CDC── Pi
                            └──ESP-NOW── panel B
 
-**A** deletes a board and an ESP-NOW hop and gets SocketCAN's tooling. **B** keeps an
-isolated MCU that boots in under a second and filters a firehose down to two signals,
-which matters if the booster turns out to be chatty — the Pi already carries HVAC,
-iDrive, lighting, dashboard and kiosk. Do not pick until Phase 3 has a number.
+**A** deletes a board and an ESP-NOW hop and gets SocketCAN's tooling. **B** would
+have kept an isolated MCU filtering a firehose down to two signals — worth it only if
+the booster were chatty, which it is not.
 
 ESP-NOW is a different radio from CAN and does not touch the read-only story.
 
@@ -79,14 +79,18 @@ locations. Anything earlier would be encoding guesses.
 | `ibooster_sniffer/` | Read-only slcan sniffer, ESP32-S3 + SN65HVD230 |
 | `BENCH_PLAN.md` | Phased bench procedure, Phase 0 → 7 |
 | `VERIFY_FIRST.md` | Gate list — unverified hardware facts, and how to settle each |
-| `docs/PINOUT.md` | Community pinout **hypotheses** with confidence + test method |
+| `docs/PINOUT.md` | Pinout — measured rows + unverified remainder |
+| `docs/DECODE.md` | **Confirmed signal definitions and calibration** |
+| `docs/BENCH_LOG.md` | Dated findings + the reasoning errors made along the way |
+| `report/index.html` | Self-contained plotted data |
+| `tools/` | Python capture + analysis (gs_usb over libusb) |
 | `tools/99-ibooster.rules` | udev rule pinning the sniffer to `/dev/ibooster` |
-| `logs/` | Captures (gitignored) |
+| `logs/` | Captures — **committed**, they are the evidence behind DECODE.md |
 
 ## Hardware
 | Part | Detail |
 |---|---|
-| DUT | Bosch iBooster Gen2 family, Tesla PN `1037123-00-B` (2020 Model S LR) |
+| DUT | Bosch iBooster **Gen1**, Tesla PN `1037123-00-B`, fitment 2016-2020 Model S |
 | Bench interface | **CANable clone (Jhoinrch RH02) USB-CAN dongle** — owned, primary |
 | Fallback interface | ESP32-S3 + **SN65HVD230** (3.3V native) running `ibooster_sniffer` |
 | Bus | 500 kbps, two independent buses, **no internal termination** |

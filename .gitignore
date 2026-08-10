@@ -2,9 +2,9 @@
 build/
 */build/
 
-# Captures — can get large, and hold vehicle-specific data
-logs/*
-!logs/.gitkeep
+# Captures are deliberately committed: they are the evidence behind every claim
+# in docs/DECODE.md, so the decode can be re-derived with tools/analyze.py.
+# Bench frames only — no vehicle-identifying data.
 
 # macOS
 .DS_Store

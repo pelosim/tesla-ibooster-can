@@ -1,11 +1,12 @@
 # docs/PINOUT.md
 
-Working pinout for Tesla iBooster PN `1037123-00-B` (2020 Model S LR).
+Working pinout for Tesla iBooster PN `1037123-00-B` — **Gen1**, fitment 2016-2020 Model S.
 
-**Status: nothing in the hypothesis table has been measured on this unit.**
-Confidence reflects agreement among community sources for *other* iBooster
-variants (Golf MK8, Yaris Gen4, Citroën, Honda CR-V, generic Gen1/Gen2), not
-evidence about this part number.
+**Status: the power and CAN pins are MEASURED on this unit** (2026-08-06) — see
+Measured results at the bottom. The pedal-sensor and auxiliary rows below remain
+unverified hypotheses from community work on *other* variants (Golf MK8, Yaris Gen4,
+Citroën, Honda CR-V), and their confidence reflects agreement among those sources,
+not evidence about this part number.
 
 Connector: 26-pin EuCon (medium confidence — verify by cavity count and housing
 markings in Phase 0).
@@ -16,18 +17,18 @@ markings in Phase 0).
 
 | Pin | Function | Terminal | Confidence | How to settle it |
 |---|---|---|---|---|
-| 1 | +12V permanent, 40A fused | large 4.8 spade | high | Heaviest terminal; continuity + current draw |
-| 9 | GND | large 4.8 spade | high | Continuity to housing / ground stud |
-| 17 | +12V permanent, 5A fused | medium 2.8 | low | **Gen1 only** — Gen2 reportedly drops this pin. Check whether the cavity is even populated |
-| 20 | +12V ignition, 5A fused | small 1.5 | high | Behaviour: assist appears only when energised (Phase 4) |
-| 25 | Vehicle CAN-H | small 1.5 | medium | ~2.5V idle when powered; scope the pair |
-| 16 | Vehicle CAN-L | small 1.5 | medium | ~2.5V idle when powered; scope the pair |
-| 18 | YAW CAN-H | small 1.5 | medium | Same |
-| 10 | YAW CAN-L | small 1.5 | medium | Same |
-| 2 | Pedal sensor — Gen1 #1 / Gen2 #2 | small 1.5 | low | Sources disagree; Gen1 and Gen2 swap the mapping |
-| 8 | Pedal sensor — Gen1 #3 / Gen2 #4 | small 1.5 | low | Same |
-| 22 | Pedal sensor — Gen1 #2 / Gen2 #1 | small 1.5 | low | Same |
-| 23 | Pedal sensor — Gen1 #4 / Gen2 #3 | small 1.5 | low | Same |
+| 1 | +12V permanent, 40A fused | large 4.8 spade | **CONFIRMED** | Powers the unit; assists with 1+9+20 |
+| 9 | GND | large 4.8 spade | **CONFIRMED** | Powers the unit; assists with 1+9+20 |
+| 17 | +12V permanent, 5A fused | medium 2.8 | low | **Gen1 has this pin** and this unit is Gen1, so expect it populated. Unverified |
+| 20 | +12V ignition, 5A fused | small 1.5 | **CONFIRMED** | Assist present with this energised |
+| 25 | Vehicle CAN-H | small 1.5 | **CONFIRMED** | Captured 0x39D at 500 kbps with this polarity |
+| 16 | Vehicle CAN-L | small 1.5 | **CONFIRMED** | Captured 0x39D at 500 kbps with this polarity |
+| 18 | YAW CAN-H | small 1.5 | **CONFIRMED** | Captured 0x38E/0x38F at 500 kbps |
+| 10 | YAW CAN-L | small 1.5 | **CONFIRMED** | Captured 0x38E/0x38F at 500 kbps |
+| 2 | Pedal sensor #1 (Gen1 mapping) | small 1.5 | low | Gen1 mapping applies here. Unverified |
+| 8 | Pedal sensor #3 (Gen1 mapping) | small 1.5 | low | Unverified |
+| 22 | Pedal sensor #2 (Gen1 mapping) | small 1.5 | low | Unverified |
+| 23 | Pedal sensor #4 (Gen1 mapping) | small 1.5 | low | Unverified |
 | 24 | Brake signal output | small 1.5 | low | Reported on the VAG Gen2 unit; may not exist here |
 | 4 | CLIN (to BCPM pin 2) | small 1.5 | low | Reported on the Yaris Gen2; Toyota-specific, likely absent |
 
@@ -74,11 +75,11 @@ dominant jams the bus. SN65HVD230 or TJA1051T/3 only.
 
 ## CAN signal hypotheses
 
-| Bus | ID | Claim | Confidence |
+| Bus | ID | Community claim | Outcome on this unit |
 |---|---|---|---|
-| YAW | `0x38E` | byte 3 = pedal position; idle `0x40` (64), full `0xC0` (192) | medium — **test this first, it is cheap** |
-| YAW | `0x38F` | transmitted, purpose unknown | medium that it exists |
-| Vehicle | ? | brake input stroke in mm, reportedly readable with a community Tesla DBC | low — ID unidentified |
+| YAW | `0x38E` | byte 3 = pedal position; idle `0x40`, full `0xC0` | **Half right.** Idle `0x40` exact. But `b3` is the *low byte* of a 16-bit LE field with `b4`, so it wraps — `0xC0` is a mid-travel value here, not full scale |
+| YAW | `0x38F` | transmitted, purpose unknown | **Confirmed present**, 49.8 Hz. Still undecoded |
+| Vehicle | ? | brake input stroke in mm | **Found**: `0x39D` b2:b3 uint16 LE. Not millimetres raw — 320.68 counts/mm |
 
 From a GM Volt integration, for shape only — **not** applicable here and listed
 solely so it is not mistaken for this unit's protocol later: `FrictionBrakeCmd`
@@ -89,7 +90,23 @@ displacement points from the Phase 5 sweep give you scale and offset.
 
 ---
 
-## Measured results
+## Measured results — 2026-08-06
 
-_Empty. Add dated entries here as Phase 1–6 settle each row, and tick the matching
-box in `VERIFY_FIRST.md`._
+**Power:** pin 1 = 12 V, pin 9 = GND, pin 20 = ignition. With only these three the
+booster **assists** — no CAN input of any kind required.
+
+**CAN, both buses 500 kbps, neither internally terminated:**
+
+| Bus | CAN-H | CAN-L | Verified by |
+|---|---|---|---|
+| Vehicle | **25** | **16** | `0x39D`, `0x33D`, `0x35D`, `0x32D` + 8 more decoded off it |
+| YAW | **18** | **10** | `0x38E` @ 99.7 Hz, `0x38F` @ 49.8 Hz |
+
+Polarity is **assigned, not merely paired** — these orientations produced clean
+frames. Signals in [DECODE.md](DECODE.md).
+
+⚠️ Contact at these pins is the failure mode that cost six rounds of debugging.
+Verify continuity from the adapter's screw terminal through to the pin.
+
+**Not measured:** the pedal-sensor pins (2, 8, 22, 23), pin 17, pin 24, pin 4, and
+peak current draw during assist. Those rows above remain hypotheses.
