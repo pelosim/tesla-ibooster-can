@@ -36,7 +36,48 @@ TEST_ID = 0x7AA
 PAYLOAD = [0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04]
 
 
+def loopback(index=0):
+    """Single-adapter internal loopback. Proves libusb, gs_usb, the controller and
+    the read loop -- everything except the transceiver and your wiring.
+
+    Uses SILENT|LOOPBACK together, which on bxCAN is internal loopback with the TX
+    pin held recessive. Even so, RUN IT DISCONNECTED: whether candleLight maps that
+    combination to true silent loopback is not something I can verify from here, and
+    the downside of being wrong is transmitting onto a brake actuator's bus.
+    """
+    devs = GsUsb.scan()
+    if not devs or index >= len(devs):
+        print("No adapter found.", file=sys.stderr)
+        return 1
+    dev = devs[index]
+    dev.set_bitrate(BITRATE)
+    dev.start(GS_CAN_MODE_LISTEN_ONLY | GS_CAN_MODE_LOOP_BACK)
+
+    got, frame = 0, GsUsbFrame()
+    for n in range(10):
+        dev.send(GsUsbFrame(can_id=TEST_ID, data=[n] + PAYLOAD[1:]))
+        deadline = time.time() + 0.3
+        while time.time() < deadline:
+            if dev.read(frame, 50) and frame.arbitration_id == TEST_ID:
+                got += 1
+                break
+    dev.stop()
+
+    print(f"=== loopback: received {got}/10 ===\n")
+    if got >= 8:
+        print("PASS. USB path, driver, controller and read loop all work.")
+        print("So a silent bus is physical: wiring, transceiver, pins, or the unit.")
+        return 0
+    print("FAIL. The problem is upstream of any wiring -- the capture path itself")
+    print("is not working, and every zero-frame result so far is uninformative.")
+    return 1
+
+
 def main():
+    if "--loopback" in sys.argv:
+        print("*** Adapter must be DISCONNECTED from the booster. ***\n")
+        return loopback()
+
     devs = GsUsb.scan()
     print(f"Found {len(devs)} adapter(s).")
     for i, d in enumerate(devs):
