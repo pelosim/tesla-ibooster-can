@@ -153,6 +153,8 @@ def main():
     counts = Counter()
     first_seen = {}
     last_data = {}
+    byte_min = {}   # id -> [min per byte position]
+    byte_max = {}   # id -> [max per byte position]
     total = 0
     t0 = time.time()
     t_stat = t0
@@ -173,6 +175,18 @@ def main():
                 first_seen.setdefault(cid, now - t0)
                 changed = last_data.get(cid) is not None and last_data[cid] != data
                 last_data[cid] = data
+
+                if cid not in byte_min:
+                    byte_min[cid] = list(data)
+                    byte_max[cid] = list(data)
+                else:
+                    lo, hi = byte_min[cid], byte_max[cid]
+                    for i, b in enumerate(data):
+                        if i < len(lo):
+                            if b < lo[i]:
+                                lo[i] = b
+                            if b > hi[i]:
+                                hi[i] = b
 
                 if not args.quiet:
                     mark = "*" if changed else " "
@@ -204,10 +218,26 @@ def main():
         print("    re-run with --mode ack")
         return 0
 
-    print(f"\n{'ID':>6} {'count':>8} {'rate/s':>8}  first@   bytes")
+    print(f"\n{'ID':>6} {'count':>8} {'rate/s':>8}  first@   last bytes")
     for cid, n in counts.most_common():
         print(f"{cid:6X} {n:8d} {n / elapsed:8.1f}  {first_seen[cid]:6.2f}  "
               f"{last_data[cid].hex(' ').upper()}")
+
+    # Per-byte ranges. During a stroke sweep the byte tracking the pushrod shows a
+    # wide span while everything else stays fixed -- that is the whole decode.
+    print("\nPer-byte range (min..max). '.' = never changed:")
+    for cid, _ in counts.most_common():
+        lo, hi = byte_min[cid], byte_max[cid]
+        cells = []
+        for i in range(len(lo)):
+            if lo[i] == hi[i]:
+                cells.append(f"  .{lo[i]:02X} ")
+            else:
+                cells.append(f"{lo[i]:02X}-{hi[i]:02X}")
+        movers = sum(1 for i in range(len(lo)) if lo[i] != hi[i])
+        flag = "  <-- MOVING" if movers else ""
+        print(f"  {cid:03X}  {' '.join(cells)}{flag}")
+
     print("\nRecord the total fps in VERIFY_FIRST.md -- it decides the Phase 7 "
           "car-side architecture.")
     return 0

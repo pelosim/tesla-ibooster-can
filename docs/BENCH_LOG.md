@@ -35,7 +35,58 @@ adapter, R120 on:
 
 **The booster did not transmit anything, on either bus, under any of the above.**
 
-### Host-power theory RULED OUT
+### ✅ RESOLVED — bad contact at the booster CAN pins
+
+The entire silence chapter was **a bad connection at the booster end**. Once the
+leads were re-seated (verified 2.5V at the leads themselves, not just at the pins),
+frames appeared immediately. Nothing was wrong with the pinout, the bitrate, the
+polarity, the adapter, the host, or the unit.
+
+**Lesson:** verify continuity from the *adapter's screw terminal through to the
+booster pin* before trusting any negative result. Clipping onto exposed pins looks
+connected and often is not. Six rounds of debugging went into a wiring fault.
+
+### ✅ CONFIRMED — pins 25/16 and 18/10 carry CAN at 500 kbps
+
+Community pinout corroborated on a Tesla `1037123-00-B`.
+
+### ✅ CONFIRMED — listen-only is UNUSABLE on this bus
+
+Same booster, same 12s window, only the mode differs:
+
+| Mode | Total | Unique IDs | 0x39D rate |
+|---|---|---|---|
+| listen-only | 1006 fps | **1** | 1006 Hz |
+| ACK | **37 fps** | **4** | 25.7 Hz |
+
+Listen-only produces a **retransmission storm** — no ACK, so TEC climbs 8 per
+attempt, bus-off at 32 attempts (~32 ms), automatic bus-off recovery (~3 ms), repeat.
+The 1006 fps is that cycle, not a real signal rate. Worse, **it hid three of the four
+IDs** behind the noise.
+
+`GS_CAN_MODE_LISTEN_ONLY` is genuinely supported by the adapter (feature bitmap
+`0x000000F3`), so this is real passive behaviour and not a masked-off flag. This
+makes the ACK-mode requirement a demonstrated fact rather than a paper argument.
+
+### First ID inventory — ignition on, nothing touched
+
+| ID | rate | bytes | note |
+|---|---|---|---|
+| `0x39D` | 25.7 Hz | `B5 0C 08 01` | fastest; prime candidate for pedal/stroke |
+| `0x33D` | 9.9 Hz | `00 00 FF FF FF FF FF FF` | trailing FF — likely "signal unavailable" |
+| `0x35D` | 1.0 Hz | `05 55 55 55 55 55 55 55` | 0x55 fill — placeholder/unused |
+| `0x32D` | 0.5 Hz | `0D 00 00 00 8D 79 20 21` | structured; counter or identity? |
+
+The FF and 0x55 fills are consistent with a booster running without vehicle context
+and marking those signals invalid.
+
+### ✅ Phase 7 decision criterion MET — 37 fps
+
+Modest by any measure, so **option A (CANable straight onto the Pi) is viable**. The
+extra ESP32 and the ESP-NOW hop can be dropped. Re-check if the other bus, or
+activity under braking, changes the number materially.
+
+### Host-power theory RULED OUT (superseded — the real cause was contact)
 
 Re-ran 500k listen-only for 12s with the MacBook on mains, booster powered, ignition
 on, CAN connected: **still 0 frames.** The dying battery was not the explanation and
