@@ -15,10 +15,10 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 
 ## Bench tooling
 
-- [ ] **Which firmware is on the CANable clone (Jhoinrch RH02)?** `ls /dev/cu.usbmodem*`
-      — a serial device means `slcan` (works on the Mac via python-can
-      `bustype='slcan'`); nothing means `candleLight`/`gs_usb`, which has no serial
-      port and needs the Pi, since macOS has no SocketCAN.
+- [x] **CONFIRMED 2026-08-06 — `candleLight`/`gs_usb` (`1d50:606f`), not slcan.**
+      No serial port. Driven on macOS via `tools/sniff.py` over libusb. Feature
+      bitmap `0x000000F3`: LISTEN_ONLY, LOOP_BACK, HW_TIMESTAMP supported;
+      ONE_SHOT not.
 
 - [ ] **Is `R120` a solder jumper or a switch, and which state is it in?**
       *Method:* meter across the screw terminals with nothing attached — 120R means
@@ -43,12 +43,11 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 - [ ] **Pin 20 = ignition / wake, 12V.** *Method:* small 1.5 terminal; confirm by
       behaviour in Phase 4 (assist only appears once it is energised).
 
-- [ ] **Vehicle CAN: pin 25 = CAN-H, pin 16 = CAN-L.**
-      *Method:* unpowered resistance sweep for a plausible pair, then powered DC
-      check — both should idle near 2.5V, H rising and L falling on traffic.
-      Scope across the pair confirms 500 kbps instantly if one is available.
-
-- [ ] **YAW CAN: pin 18 = CAN-H, pin 10 = CAN-L.** Same method.
+- [x] **CONFIRMED 2026-08-06 — pins 25/16 and 18/10 are the two CAN pairs**, both
+      biased at 2.5V, 500 kbps. Community pinout corroborated on a Tesla unit.
+      ⚠️ Contact at these pins is the failure mode that cost six rounds of
+      debugging: verify continuity from the adapter's **screw terminal** through to
+      the pin, not just that a clip is sitting on it.
 
 - [ ] **Which bus is which.** The "vehicle" and "YAW" labels come from other
       platforms. On the Tesla unit, identify each bus by what it carries, not by
@@ -68,9 +67,11 @@ Ticking a box = replacing the claim with what you actually measured, dated.
       on each pair. Expect open / very high. If it reads 120R, the unit *is*
       terminated and the bench wiring changes.
 
-- [ ] **Both buses are 500 kbps.** *Method:* Phase 2, listen-only. Clean decode at
-      500k is the confirmation. Garbage or bus errors mean try another rate before
-      ever opening in ACK mode.
+- [x] **CONFIRMED 2026-08-06 — 500 kbps.** Clean decode. A passive sweep of
+      250k/125k/1M/800k/100k/50k found nothing, so 500k is not a coincidence.
+      ⚠️ **Listen-only is UNUSABLE on this bus** — no ACK means a retransmission
+      storm (1006 fps of one ID) that *hides* three of the four IDs. ACK mode gives
+      37 fps across four. Always capture in ACK mode.
 
 - [ ] **Peak current draw during assist.** Community reports are "tens of amps" and
       the fuse spec is 40A. *Method:* clamp meter on the 12V lead during a full
@@ -81,9 +82,10 @@ Ticking a box = replacing the claim with what you actually measured, dated.
       answers it. This matters: if yes, the whole decode can be done without the
       motor ever being able to move.
 
-- [ ] **Total frame rate, per bus.** Phase 3. Not a safety item — it is the criterion
-      that decides the Phase 7 car-side architecture (dongle-on-Pi vs a dedicated
-      ESP32 filtering the stream). Nothing else measures it, so do not skip past it.
+- [x] **CONFIRMED 2026-08-06 — 37 fps at rest, 37 fps under pedal activity** (4 IDs
+      at rest, 11 under activity). Modest, so the **Phase 7 decision resolves to
+      option A**: CANable straight onto the Pi, no extra ESP32, no ESP-NOW hop.
+      Not yet measured on the second bus.
 
 ---
 
@@ -105,9 +107,9 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 
 ## CAN decode hypotheses (nothing here is established)
 
-- [ ] **YAW `0x38E`, byte 3 = pedal position**, idle `0x40` (64), fully pressed
-      `0xC0` (192). Strongest starting hypothesis. Confirm or kill it first in
-      Phase 5 — it is cheap to test and settles the method.
+- [x] **KILLED 2026-08-06.** No `0x38E` on this unit. Stroke is **`0x39D` bytes 2:3,
+      uint16 little-endian** — see `docs/DECODE.md`. The community hypothesis was
+      from other platforms and did not transfer.
 
 - [ ] **YAW `0x38F`** is transmitted; purpose unknown.
 
@@ -123,4 +125,12 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 
 - **2026-08-06** — `ibooster_sniffer` v1.0.0 compiles clean on the v3 toolchain
   (core 3.3.10): 323426 bytes flash (24%), 22716 bytes RAM (6%), zero warnings.
-  Not yet run against hardware.
+  Not yet run against hardware, and now unlikely to be needed — the CANable path
+  works and Phase 7 resolved to option A.
+
+- **2026-08-06** — capture chain proven end to end: `tools/selftest.py` 20/20 between
+  two RH02s. The adapter is no longer a candidate explanation for a silent bus.
+
+- **2026-08-06** — **`0x39D` fully decoded**: `b0` = checksum `(b1+b2+b3+0xA0)&0xFF`
+  validating on 100% of 2250 frames, `b1` = 4-bit alive counter, `b2:b3` = stroke
+  uint16 LE, rest ~262, max observed 14070. See `docs/DECODE.md`.
