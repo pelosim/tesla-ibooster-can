@@ -81,9 +81,10 @@ Ticking a box = replacing the claim with what you actually measured, dated.
       apply in Phase 4. This number decides whether a bench supply is usable at all
       or a battery is mandatory. **Assume battery until measured.**
 
-- [ ] **Does it transmit on pins 1+9 alone, with no ignition?** Unknown. Phase 2
-      answers it. This matters: if yes, the whole decode can be done without the
-      motor ever being able to move.
+- [ ] **Does it transmit on pins 1+9 alone, with no ignition?** Still unmeasured —
+      every successful capture so far has had ignition energised. Lower value now
+      that the decode is done, but it would let future bench work happen with the
+      motor unable to move.
 
 - [x] **CONFIRMED 2026-08-06 — both buses measured at rest:**
       - **25/16 (Vehicle):** 36.4 fps, 4 IDs at rest, 11 under pedal activity
@@ -99,11 +100,20 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 
 ## Behaviour
 
-- [ ] **Does it assist standalone**, with no vehicle CAN traffic present, ignition
-      energised? Community says yes for other platforms. If the Tesla firmware
-      instead demands specific vehicle messages before it will assist, the
-      read-only end state in the 944 is not viable as designed and the whole plan
-      needs revisiting. **This is the single highest-value question in the project.**
+- [x] **✅ CONFIRMED YES — 2026-08-06. IT ASSISTS STANDALONE.**
+      With only 12V (pin 1), ground (pin 9) and ignition (pin 20), and **nothing
+      ever transmitted to it**, the motor assists. Mark's observation: the rod is
+      very hard to move by hand unpowered, and obviously assisted with power.
+
+      **This validates the entire read-only design.** The booster needs no vehicle
+      CAN, no wake frame and no keep-alive. A purely passive monitor is viable in
+      the 944, and the "we may have to transmit to a brake actuator" risk that hung
+      over this project is closed — it never has to happen.
+
+      Consequence to keep in mind: the booster assists whenever ignition is live,
+      regardless of CAN. There is no CAN-based way to disable or modulate it, which
+      for a retrofit is a feature — it behaves like a conventional booster — but it
+      also means the CAN link is strictly observational in both directions.
 
 - [ ] **What does it report with no vehicle present?** Expect fault/degraded flags.
       Capture them — they identify the status byte for free.

@@ -86,6 +86,15 @@ Modest by any measure, so **option A (CANable straight onto the Pi) is viable**.
 extra ESP32 and the ESP-NOW hop can be dropped. Re-check if the other bus, or
 activity under braking, changes the number materially.
 
+### ✅ IT ASSISTS STANDALONE — the project's central question, answered YES
+
+With 12V, ground and ignition only, and **nothing ever transmitted to it**, the motor
+assists. Unpowered the rod is very hard to move by hand; powered it is obviously
+boosted.
+
+No vehicle CAN, no wake frame, no keep-alive. **The read-only design is viable in the
+944** and the risk of having to transmit to a brake actuator is permanently closed.
+
 ### Host-power theory RULED OUT (superseded — the real cause was contact)
 
 Re-ran 500k listen-only for 12s with the MacBook on mains, booster powered, ignition
