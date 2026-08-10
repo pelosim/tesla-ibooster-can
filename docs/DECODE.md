@@ -237,7 +237,7 @@ needs a pedal sweep before anything can be said.
 | ID | rate | at-rest bytes | note |
 |---|---|---|---|
 | `0x39D` | 25.0 Hz | `B5 0C 08 01` | decoded above |
-| `0x33D` | 10.1 Hz | `00 00 FF FF FF FF FF FF` | trailing `FF` = signals unavailable; comes alive under activity |
+| `0x33D` | 9.5 Hz | `00 00 FF FF FF FF FF FF` | **event message** — see below |
 | `0x35D` | 1.0 Hz | `05 55 55 55 55 55 55 55` | `0x55` fill — placeholder |
 | `0x32D` | 0.5 Hz | `0D 00 00 00 8D 79 20 21` | structured; identity or config? |
 | `0x3AD` | 0.2 Hz | — | appears under activity |
@@ -247,3 +247,28 @@ needs a pedal sweep before anything can be said.
 ⚠️ `0x33D`'s bytes rank as "smooth" in `analyze.py` but are a **false positive**: they
 sit at `FF` and jump rarely, so mean delta stays low. Judge by the plotted shape, not
 the smoothness number alone.
+
+---
+
+## `0x33D` — post-brake event message — BEHAVIOUR CONFIRMED 2026-08-06
+
+Transmits at 9.5 Hz but is **all-`FF` 99.8% of the time**. In a 150 s run it carried a
+real payload **3 times, one frame each**:
+
+    t= 6.93s   04 00 0A 00 53 53 55 55
+    t=25.24s   16 00 00 00 55 52 57 53
+    t=35.76s   16 00 00 00 58 53 5A 55
+
+**Trigger: ~0.8 s after a brake release.** Two pedal applications in the run, two
+events, at +0.82 s and +0.84 s after release. The third fired at rest shortly after
+boot, coincident with the `0x31D/34D/36D/37D/38D` burst group.
+
+**Earlier guess corrected.** This was called "likely the fault/status message, the
+signal your gauge panel actually wants". It is not periodic status — it is a rare
+event, and a display polling it would see `FF` essentially always. If a status signal
+exists it is elsewhere.
+
+**Not decodable from 3 samples.** `b0` takes `04`/`16`/`16`, `b1` is always `00`,
+`b2:b3` is small (`0A 00`, `0000`, `0000`), and `b4..b7` cluster tightly in
+`0x52..0x5A`. Decoding this needs a run with many deliberate, varied brake
+applications — vary force, depth and duration and see which field follows what.
