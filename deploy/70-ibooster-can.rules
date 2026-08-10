@@ -1,0 +1,16 @@
+# Persistent names for the two CANable adapters on the HVAC Pi.
+#
+# WHY: can0/can1 are assigned in USB enumeration order, so they can swap on reboot.
+# A swap would silently mislabel which bus a capture came from -- the same
+# instability that already bit us with adapter indices on macOS, but worse, because
+# nothing about the data announces that it happened.
+#
+# CAVEAT: these names follow the ADAPTER, not the wire. If you move the CAN leads
+# between adapters, the names become wrong and nothing will warn you. Label the
+# adapters physically, and note that tools can always re-verify by content --
+# whichever bus carries 0x39D is the vehicle bus.
+#
+# Verify a name took:  ip -br link show type can
+
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003000294730510220353346", NAME="can-veh"
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003500434E56511820313534", NAME="can-yaw"

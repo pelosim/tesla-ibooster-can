@@ -1,0 +1,13 @@
+[Unit]
+Description=iBooster CAN interfaces at 500 kbps
+# The adapters are USB; wait until udev has settled or the names may not exist yet.
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/ibooster-can-up
+
+[Install]
+WantedBy=multi-user.target

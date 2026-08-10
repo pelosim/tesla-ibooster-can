@@ -1,0 +1,24 @@
+#!/bin/bash
+# Bring the iBooster CAN interfaces up at 500 kbps.
+#
+# Idempotent and tolerant of a missing adapter: unplugging one must not fail the
+# unit, or a single loose USB lead takes the whole service down at boot.
+set -u
+RC=0
+for IF in can-veh can-yaw; do
+    if [ ! -e "/sys/class/net/$IF" ]; then
+        echo "$IF: not present, skipping"
+        continue
+    fi
+    ip link set "$IF" down 2>/dev/null
+    # NOT listen-only: on a 2-node bus a passive node never ACKs, the booster
+    # retransmits, hits bus-off in ~32 ms and the capture becomes a storm that hides
+    # most IDs. ACK is a link-layer bit, not a command -- this still transmits nothing.
+    if ip link set "$IF" type can bitrate 500000 && ip link set "$IF" up; then
+        echo "$IF: up at 500000, normal (ACK) mode"
+    else
+        echo "$IF: FAILED to bring up" >&2
+        RC=1
+    fi
+done
+exit $RC
