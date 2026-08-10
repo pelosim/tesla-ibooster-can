@@ -36,11 +36,34 @@ range. A checksum or counter spans 00..FF but jumps randomly frame to frame; a
 physical signal moves smoothly. `b2:b3` LE scored 0.009 against ~0.12 for the
 counter/checksum pair. `tools/analyze.py` does this.
 
-### Not yet known
+### Scaling — CALIBRATED 2026-08-06
 
-- **Physical scaling.** rest ≈ 262 and full ≈ 14070 are raw counts. Converting to mm
-  needs a sweep with a dial indicator and two known displacement points. Do not
-  assume the raw value is millimetres, or that rest is a true zero.
+Two-point fit from held plateaus at 21 mm and 42 mm (161 and 80 samples):
+
+    counts = 333.866 * mm - 897.2
+    mm     = (counts + 897.2) / 333.866
+
+    0.0030 mm per count  (~3 um resolution)
+
+| Position | Raw (measured) | Samples |
+|---|---|---|
+| rest | **263.1** | 319 |
+| 21 mm | **6114.0** | 161 |
+| 42 mm | **13125.2** | 80 |
+| end-stop pulse | **13606** (peak) = **43.44 mm** | — |
+
+**Rest does not sit on the line.** 263 counts extrapolates to 3.475 mm, not zero.
+The consistent explanation is roughly **3.5 mm of free play** before the sensor
+engages, with the reading held at a floor of ~263 below that:
+
+    263 + 333.87 * (21 - 3.475) = 6113   (measured 6114)
+    263 + 333.87 * (42 - 3.475) = 13123  (measured 13125)
+
+Both within 2 counts.
+
+⚠️ **Only one point below the dead band was measured**, so this cannot yet
+distinguish a hard floor from a non-linear region near rest. A third hold at ~10 mm
+would settle it. Do not rely on values under ~4 mm meaning anything.
 - Whether `b1` rolling over or a checksum failure ever signals anything meaningful.
 - Whether the 0xA0 constant is fixed or derived from the CAN ID. `0x39D + 3 = 0x3A0`,
   whose low byte is `0xA0` — that is almost certainly a coincidence, but a second
@@ -75,13 +98,27 @@ At rest: `77 2B 00 40 11 00 00 00`
 | `b0` | checksum? | ranges 1E..F9, varies every frame — same role as `0x39D` `b0` |
 | `b1` | alive counter | `0x20`..`0x2F` — low nibble counts, upper nibble fixed at 2 |
 | `b2` | — | constant `00` at rest |
-| `b3` | **pedal position** | **`0x40` at rest — matches the community's stated idle exactly.** Their claim of `0xC0` at full travel is **untested** |
+| `b3` | position, **8-bit and WRAPS** | `0x40` at rest as the community states — but see below |
 | `b4` | — | constant `11` at rest |
 | `b5:b7` | — | constant `00` |
 
-**Resolution note:** this is an 8-bit signal spanning roughly `0x40`..`0xC0`, about
-128 counts. `0x39D` on the other bus gives 13822 counts over the same travel — over
-100x finer. Prefer `0x39D` for anything that logs or displays a value.
+### ⚠️ `b3` wraps — do not use it as a position signal
+
+Measured against the same physical holds: rest `64`, 21 mm `246`. That is
+**8.67 counts/mm**, so `b3` passes `0xC0` (192) at about **14.8 mm**, not at full
+travel, and exceeds 255 and **wraps** before 42 mm. Its observed range is the full
+`00..FF`.
+
+The community's *idle* value (`0x40`) transfers exactly. Their *full-scale* claim
+(`0xC0`) does not — this firmware uses roughly 2.8x their scaling, so `0xC0` is a
+mid-travel value here, not an endpoint.
+
+Where the high bits live is **unresolved**. `b4` also moves (15 -> 21 -> 27 across
+the three holds) but is not the high byte: it advances ~6 per 21 mm, far too fast
+for a carry. `b3:b4` as 12- or 16-bit, either endianness, does not fit linearly.
+
+**Use `0x39D` instead.** It gives 13822 counts over the same travel against `b3`'s
+~128 before wrapping — over 100x finer, no wrap, and calibrated.
 
 ## `0x38F` — YAW bus — NOT decoded
 
