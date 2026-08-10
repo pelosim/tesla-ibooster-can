@@ -35,6 +35,22 @@ adapter, R120 on:
 
 **The booster did not transmit anything, on either bus, under any of the above.**
 
+### ⚠️ These negatives are SUSPECT — host power was failing
+
+**The MacBook's battery died during the live booster testing.** The adapter is USB
+bus-powered and USB ground-referenced (150 mA per its descriptor), so a declining
+battery can brown out the USB rail long before the machine shuts down. A
+marginally-powered CAN adapter fails in exactly the observed way: enumerates,
+accepts a bitrate, receives nothing.
+
+The 20/20 positive control was run afterwards, with the Mac back on power. It proves
+the adapter is good; it does **not** validate the captures taken while the battery
+was dying.
+
+**Every negative above needs repeating with the host on mains** before it means
+anything. Better still, run bench captures from the Pi: mains-powered, and
+candleLight gives it native SocketCAN and `can-utils`.
+
 ### What 2.5V does not prove
 
 A CAN transceiver with power but a host controller held in reset, uninitialised or
@@ -51,8 +67,11 @@ window is unconfirmed** — repeat it deliberately before treating it as settled
 
 ### Open, in priority order
 
-1. **Current draw on the 12V rail.** Free, immediate, and splits "ECU not running"
-   from "ECU running but mute". Near-zero means it never booted.
+0. **Repeat everything with the host on mains.** The negatives above were taken while
+   the MacBook battery was failing. Do not reason from them until they are re-taken.
+1. **Current draw on the 12V rail.** Free, immediate, independent of the host, and
+   splits "ECU not running" from "ECU running but mute". Near-zero means it never
+   booted.
 2. **Repeat the ACK capture across a deliberate power cycle**, now that the tooling
    is proven.
 3. **Re-verify connector pin numbering from the moulded numbers**, not from position
