@@ -46,18 +46,15 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 - [x] **CONFIRMED 2026-08-06 — pin 25 = CAN-H, pin 16 = CAN-L.** Not just the
       pairing: this exact polarity produced clean frames, so H/L are assigned.
       Carries `0x39D` stroke — the community's "Vehicle CAN".
-- [x] **CONFIRMED 2026-08-06 — pins 18/10 are the second CAN pair**, biased at 2.5V.
-      Pairing confirmed; **H/L polarity NOT yet established** and nothing captured
-      from it. Try CAN-H → 18, CAN-L → 10 first, matching the convention that
-      worked on 25/16.
+- [x] **CONFIRMED 2026-08-06 — pin 18 = CAN-H, pin 10 = CAN-L.** Captured clean at
+      500 kbps with this polarity. Carries `0x38E`/`0x38F` — the "YAW CAN".
       ⚠️ Contact at these pins is the failure mode that cost six rounds of
       debugging: verify continuity from the adapter's **screw terminal** through to
       the pin, not just that a clip is sitting on it.
 
-- [~] **Which bus is which.** Pins 25/16 carry the stroke signal, consistent with
-      the community's "Vehicle CAN" label. The 18/10 pair is uncaptured, so its
-      identity rests on community naming alone — treat "YAW" as a label, not a fact,
-      until something is decoded off it.
+- [x] **CONFIRMED 2026-08-06 — both buses identified, community naming holds.**
+      Pins 25/16 = "Vehicle CAN" (`0x39D` stroke). Pins 18/10 = "YAW CAN"
+      (`0x38E`/`0x38F`, the exact IDs the community documented).
 
 - [ ] **Pedal travel sensor pins (2, 8, 22, 23).** Gen1 and Gen2 swap which sensor
       sits on which pin, so even the community sources disagree. *Also unresolved:*
@@ -88,10 +85,15 @@ Ticking a box = replacing the claim with what you actually measured, dated.
       answers it. This matters: if yes, the whole decode can be done without the
       motor ever being able to move.
 
-- [x] **CONFIRMED 2026-08-06 — 37 fps at rest, 37 fps under pedal activity** (4 IDs
-      at rest, 11 under activity). Modest, so the **Phase 7 decision resolves to
-      option A**: CANable straight onto the Pi, no extra ESP32, no ESP-NOW hop.
-      Not yet measured on the second bus.
+- [x] **CONFIRMED 2026-08-06 — both buses measured at rest:**
+      - **25/16 (Vehicle):** 36.4 fps, 4 IDs at rest, 11 under pedal activity
+      - **18/10 (YAW):** **149.5 fps**, 2 IDs (`0x38E` 99.7 Hz, `0x38F` 49.8 Hz)
+      - combined ~186 fps
+
+      **Phase 7 still resolves to option A** — 186 fps of 8-byte frames is trivial
+      for the Pi. Note the car install likely needs only **one** bus: 25/16 carries a
+      16-bit stroke (13822 counts) against YAW's 8-bit (~128 counts), so one dongle
+      at 36 fps probably covers it.
 
 ---
 
@@ -113,9 +115,13 @@ Ticking a box = replacing the claim with what you actually measured, dated.
 
 ## CAN decode hypotheses (nothing here is established)
 
-- [x] **KILLED 2026-08-06.** No `0x38E` on this unit. Stroke is **`0x39D` bytes 2:3,
-      uint16 little-endian** — see `docs/DECODE.md`. The community hypothesis was
-      from other platforms and did not transfer.
+- [x] **REINSTATED 2026-08-06 — I killed this prematurely and was wrong.**
+      `0x38E` is absent from the 25/16 bus but **present on 18/10 at 99.7 Hz**, and
+      its byte 3 reads **`0x40` at rest — exactly the community's stated idle
+      value**. Killing it after looking at only one of two buses was the error.
+      Still to confirm: that it reaches `0xC0` at full travel.
+      A *second*, higher-resolution stroke signal exists independently on 25/16 as
+      `0x39D` bytes 2:3 uint16 LE — see `docs/DECODE.md`.
 
 - [ ] **YAW `0x38F`** is transmitted; purpose unknown.
 

@@ -48,12 +48,55 @@ counter/checksum pair. `tools/analyze.py` does this.
 
 ---
 
+## The two buses
+
+| Bus | Pins | Rate at rest | IDs | Carries |
+|---|---|---|---|---|
+| "Vehicle CAN" | **25 = H, 16 = L** | 36.4 fps | 4 at rest, 11 under activity | `0x39D` 16-bit stroke |
+| "YAW CAN" | **18 = H, 10 = L** | **149.5 fps** | 2 | `0x38E` 99.7 Hz, `0x38F` 49.8 Hz |
+
+Community naming holds on this unit — their documented YAW IDs `0x38E`/`0x38F` are
+exactly what appears on 18/10.
+
+⚠️ **Adapter index is not stable.** USB indices reorder on replug. Identify which
+adapter is on which bus **by content** — whichever sees `0x39D` is on 25/16 — never
+by index or USB address.
+
+---
+
+## `0x38E` — YAW bus — PARTIALLY DECODED 2026-08-06
+
+500 kbps · DLC 8 · **99.7 Hz** · pins 18/10
+
+At rest: `77 2B 00 40 11 00 00 00`
+
+| Byte | Field | Notes |
+|---|---|---|
+| `b0` | checksum? | ranges 1E..F9, varies every frame — same role as `0x39D` `b0` |
+| `b1` | alive counter | `0x20`..`0x2F` — low nibble counts, upper nibble fixed at 2 |
+| `b2` | — | constant `00` at rest |
+| `b3` | **pedal position** | **`0x40` at rest — matches the community's stated idle exactly.** Their claim of `0xC0` at full travel is **untested** |
+| `b4` | — | constant `11` at rest |
+| `b5:b7` | — | constant `00` |
+
+**Resolution note:** this is an 8-bit signal spanning roughly `0x40`..`0xC0`, about
+128 counts. `0x39D` on the other bus gives 13822 counts over the same travel — over
+100x finer. Prefer `0x39D` for anything that logs or displays a value.
+
+## `0x38F` — YAW bus — NOT decoded
+
+500 kbps · DLC 8 · **49.8 Hz** · at rest `3F 2D E2 53 02 00 00 00`
+
+Same header shape: `b0` varies every frame (checksum), `b1` = `0x20`..`0x2F`
+counter. `b2:b4` constant at rest (`E2 53 02`), `b5:b7` zero. Nothing moved at rest —
+needs a pedal sweep before anything can be said.
+
+---
+
 ## Other IDs seen — NOT yet decoded
 
-**All on pins 25/16 only.** The 18/10 pair has not been captured yet, so nothing
-below should be assumed to be the unit's complete output.
-
-At rest with ignition on, four IDs. Under pedal activity, **eleven**.
+**Vehicle bus (25/16).** At rest with ignition on, four IDs. Under pedal activity,
+**eleven**.
 
 | ID | rate | at-rest bytes | note |
 |---|---|---|---|
