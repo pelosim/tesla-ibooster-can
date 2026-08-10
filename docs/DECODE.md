@@ -149,27 +149,75 @@ At rest: `77 2B 00 40 11 00 00 00`
 | `b0` | checksum? | ranges 1E..F9, varies every frame — same role as `0x39D` `b0` |
 | `b1` | alive counter | `0x20`..`0x2F` — low nibble counts, upper nibble fixed at 2 |
 | `b2` | — | constant `00` at rest |
-| `b3` | position, **8-bit and WRAPS** | `0x40` at rest as the community states — but see below |
+| `b3` | position, **LOW byte** | `0x40` at settled rest; wraps, because it is not the whole field |
+| `b4` | position, **HIGH byte** | `0x11` at settled rest |
 | `b4` | — | constant `11` at rest |
 | `b5:b7` | — | constant `00` |
 
-### ⚠️ `b3` wraps — do not use it as a position signal
+### `b3:b4` = position, uint16 LITTLE-endian — CONFIRMED
 
-Measured against the same physical holds: rest `64`, 21 mm `246`. That is
-**8.67 counts/mm**, so `b3` passes `0xC0` (192) at about **14.8 mm**, not at full
-travel, and exceeds 255 and **wraps** before 42 mm. Its observed range is the full
-`00..FF`.
+`b3` alone wraps because **it is the low byte**. `b4` is the high byte. Visible
+directly in the boot trace: across a fast push `b4` climbs `17->18->19->1A->1B` and
+walks straight back down `1A->19->...->11` on release, once per `b3` wrap.
 
-The community's *idle* value (`0x40`) transfers exactly. Their *full-scale* claim
-(`0xC0`) does not — this firmware uses roughly 2.8x their scaling, so `0xC0` is a
-mid-travel value here, not an endpoint.
+    position = b3 | (b4 << 8)      rest 4416 (0x1140), full travel ~7148
 
-Where the high bits live is **unresolved**. `b4` also moves (15 -> 21 -> 27 across
-the three holds) but is not the high byte: it advances ~6 per 21 mm, far too fast
-for a carry. `b3:b4` as 12- or 16-bit, either endianness, does not fit linearly.
+**Validated against the calibrated `0x39D`** on two independent runs:
 
-**Use `0x39D` instead.** It gives 13822 counts over the same travel against `b3`'s
-~128 before wrapping — over 100x finer, no wrap, and calibrated.
+| Run | matched samples | fit | r |
+|---|---|---|---|
+| 1 | 15296 | `39D = 4.8797 * X - 21290.3` | **0.999627** |
+| 2 | 12116 | `39D = 4.8736 * X - 21264.2` | **0.999853** |
+
+The two runs agree to **0.13% on slope and 0.12% on intercept** — far tighter than
+either agrees with the ruler, which independently confirms that the run-to-run
+calibration conflict was measurement error and not the sensor.
+
+    mm = 0.015207 * (b3 | b4<<8) - 66.36
+
+Sanity check: rest 4416 -> 0.79 mm, and 7148 -> 42.3 mm. Both consistent with the
+`0x39D` calibration.
+
+### Two corrections
+
+1. **`b3` is not unusable and `b4` is not a state field.** An earlier reading here
+   claimed `b3:b4` "does not fit linearly in either endianness" and that `b4`
+   advanced "far too fast to be a carry". Both were wrong, and came from averaging
+   over time windows that spanned the boot transition — `b4` reads `0x01` before
+   the sensor initialises at ~1.5 s and `0x11` after, so any window crossing that
+   point mixes two regimes.
+2. **`0x39D` is ~4.88x finer than `0x38E`, not "over 100x".** The 100x figure came
+   from treating `b3` as an 8-bit field. Real resolution: `0x38E` gives ~2732 counts
+   over full travel (~0.016 mm/count), `0x39D` ~13350 (~0.003 mm/count). `0x39D`
+   remains the better choice, but `0x38E` at 99.7 Hz is perfectly usable — and it is
+   **4x faster**, which matters more than resolution for anything rate-sensitive.
+
+The community's *idle* `0x40` for `b3` transfers exactly. Their `0xC0` full-scale
+claim does not, because `b3` is only the low byte on this firmware.
+
+---
+
+## Power-up sequence — CONFIRMED 2026-08-06
+
+Consistent across both captures, ms after the first frame:
+
+| t | bus | ID | note |
+|---|---|---|---|
+| 0 | both | `0x33D` / `0x38E` | first out of the gate, within 2 ms of each other |
+| ~88 | both | `0x38F`, `0x39D` | |
+| ~150 | VEH | `0x5BD` | |
+| ~1070 | VEH | `0x35D` | |
+| ~1400-1500 | VEH | `0x30D` | fires once per boot |
+| ~2070 | VEH | `0x32D` | |
+| ~2190 | VEH | `0x3AD` | |
+
+**Sensor initialises at ~1.47 s**: `0x38E` position jumps from 320 (`b4=0x01`, a
+pre-init reading) to 4416 (`b4=0x11`, true rest). Treat anything before that as
+invalid.
+
+`0x31D` `0x34D` `0x36D` `0x37D` `0x38D` are **not** part of boot — they appeared at
+6.9 s in one run and 56.7 s in the other, always as a group within ~100 ms. Event
+driven, trigger unknown.
 
 ## `0x38F` — YAW bus — NOT decoded
 
