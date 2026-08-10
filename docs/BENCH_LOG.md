@@ -35,7 +35,20 @@ adapter, R120 on:
 
 **The booster did not transmit anything, on either bus, under any of the above.**
 
-### ⚠️ These negatives are SUSPECT — host power was failing
+### Host-power theory RULED OUT
+
+Re-ran 500k listen-only for 12s with the MacBook on mains, booster powered, ignition
+on, CAN connected: **still 0 frames.** The dying battery was not the explanation and
+the negatives below stand.
+
+Further: the adapter left connected is USB Address 004, which was index **[1]** in
+the 20/20 selftest — the **receiving** adapter. Its receive path is therefore proven
+good on this exact unit, not merely on "an RH02".
+
+Remaining suspects, in order: **contact quality at the exposed pins**, **the ECU not
+running at all**, **wrong pins / wrong numbering**.
+
+### ⚠️ Historical note — host power was failing during the first round
 
 **The MacBook's battery died during the live booster testing.** The adapter is USB
 bus-powered and USB ground-referenced (150 mA per its descriptor), so a declining
