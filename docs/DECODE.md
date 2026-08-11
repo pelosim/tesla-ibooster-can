@@ -179,11 +179,16 @@ The two runs agree to **0.13% on slope and 0.12% on intercept** — far tighter 
 either agrees with the ruler, which independently confirms that the run-to-run
 calibration conflict was measurement error and not the sensor.
 
-    mm = 0.015207 * (b3 | ((b4 & 0x0F) << 8)) + 1.94
+    mm = 0.015207 * (b3 | ((b4 & 0x0F) << 8)) - 4.072
 
-Sanity check: rest 320 -> 0.79 mm, and 3052 -> 42.3 mm. Both consistent with the
-`0x39D` calibration. (Masking off the status nibble subtracts a constant 4096 counts
-from the old form; the slope is unchanged.)
+Sanity check: rest 320 -> 0.79 mm, and 3052 -> 42.34 mm. Both consistent with the
+`0x39D` calibration.
+
+⚠️ **The offset is negative.** Masking the status nibble subtracts a constant 4096
+counts, so the 16-bit form's `- 66.36` becomes `0.015207 * 4096 - 66.36 = -4.072`.
+This file briefly published `+ 1.94`, which is what a consumer of it then shipped:
+the dashboard read **6.8 mm at rest** against `0x39D`'s 0.8 mm. The two sanity values
+above are the check — any edit that does not reproduce 0.79 and 42.34 is wrong.
 
 ### Two corrections
 
