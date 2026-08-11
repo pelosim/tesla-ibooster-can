@@ -83,6 +83,42 @@ evidence actually in hand.
 
 ---
 
+## 2026-08-11 — Hotplug: a replugged adapter came back dead
+
+Pulling a CANable's USB and putting it back left that bus dead until someone
+intervened. udev renamed the interface correctly; nothing brought it **up**. It
+returned DOWN, state STOPPED, no bitrate — and `ibooster-can.service` is
+`Type=oneshot RemainAfterExit=yes`, so systemd considers it active forever and
+never re-runs it.
+
+**The fix that did not work, and the test that lied.** Setting
+`ENV{SYSTEMD_WANTS}` on the `ACTION=="add"` rule looked right, and
+`udevadm trigger --action=add` confirmed it. That confirmation was worthless:
+`udevadm trigger` synthesises an event on a device that **already exists under its
+final name**, which is not what a replug does.
+
+Renaming a network interface emits **`add` under the OLD name, then `move` under
+the NEW one**. A `SYSTEMD_WANTS` on the add rule attaches to the pre-rename device
+and never reaches the `can-veh` device unit. Binding it to the **move** event is
+what works.
+
+**Test hotplug by unbinding and rebinding the real USB device**, not by reloading
+the module and not with `udevadm trigger`:
+
+    echo 1-1.3.1:1.0 | sudo tee /sys/bus/usb/drivers/gs_usb/unbind
+    sleep 4
+    echo 1-1.3.1:1.0 | sudo tee /sys/bus/usb/drivers/gs_usb/bind
+
+Reloading `gs_usb` is also not faithful — remove and reinsert inside a couple of
+seconds and systemd's device units never go inactive, so the `Wants` is never
+re-evaluated.
+
+Verified end to end: adapter removed, reinserted, interface back UP at 500 kbps
+with frames flowing, and the backend's reader thread recovered on its own retry
+loop with no restart.
+
+---
+
 ## Still open
 
 1. **No periodic status or fault message has been found on either bus.** Everything
