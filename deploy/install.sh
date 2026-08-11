@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 sudo install -m 644 70-ibooster-can.rules /etc/udev/rules.d/70-ibooster-can.rules
 sudo install -m 755 ibooster-can-up       /usr/local/sbin/ibooster-can-up
 sudo install -m 644 ibooster-can.service  /etc/systemd/system/ibooster-can.service
+sudo install -m 644 ibooster-can-up@.service /etc/systemd/system/ibooster-can-up@.service
 sudo udevadm control --reload-rules
 sudo systemctl daemon-reload
 sudo systemctl enable --now ibooster-can.service

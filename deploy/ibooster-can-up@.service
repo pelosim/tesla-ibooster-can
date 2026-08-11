@@ -1,0 +1,10 @@
+[Unit]
+Description=Bring up CAN interface %i at 500 kbps (hotplug)
+# Started by udev via ENV{SYSTEMD_WANTS} when the adapter appears. The boot-time
+# unit (ibooster-can.service) is Type=oneshot RemainAfterExit=yes, so systemd
+# considers it active forever and will NOT re-run it when a USB adapter is
+# replugged. That is why hotplug needs its own unit rather than a retrigger.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ibooster-can-up %i

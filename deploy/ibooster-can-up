@@ -1,24 +1,54 @@
 #!/bin/bash
-# Bring the iBooster CAN interfaces up at 500 kbps.
+# Bring iBooster CAN interfaces up at 500 kbps.
 #
-# Idempotent and tolerant of a missing adapter: unplugging one must not fail the
-# unit, or a single loose USB lead takes the whole service down at boot.
+# With no argument: every interface we know about (boot).
+# With an argument:  just that one (udev hotplug, via ibooster-can-up@.service).
+#
+# Idempotent, and tolerant of a missing adapter: unplugging one must not fail
+# the unit, or a single loose USB lead takes the whole service down at boot.
 set -u
-RC=0
-for IF in can-veh can-yaw; do
-    if [ ! -e "/sys/class/net/$IF" ]; then
+
+ALL="can-veh can-yaw can-steer"
+
+# udev may start the hotplug unit before the rename has landed, so wait a
+# moment for the name rather than losing the race and leaving the link DOWN.
+# That is the exact failure this script exists to prevent: replugging the USB
+# brought the interface back STOPPED with no bitrate, and nothing re-ran.
+wait_for() {
+    local IF=$1 n=0
+    while [ ! -e "/sys/class/net/$IF" ] && [ "$n" -lt 25 ]; do
+        sleep 0.2; n=$((n + 1))
+    done
+    [ -e "/sys/class/net/$IF" ]
+}
+
+bring_up() {
+    local IF=$1
+    if ! wait_for "$IF"; then
         echo "$IF: not present, skipping"
-        continue
+        return 0
+    fi
+    # Already correct? Leave it alone — re-running `ip link set down` on a live
+    # bus would drop frames for no reason.
+    if ip -details link show "$IF" 2>/dev/null | grep -q "state ERROR-ACTIVE" \
+       && ip link show "$IF" 2>/dev/null | head -1 | grep -q ",UP"; then
+        echo "$IF: already up"
+        return 0
     fi
     ip link set "$IF" down 2>/dev/null
     # NOT listen-only: on a 2-node bus a passive node never ACKs, the booster
-    # retransmits, hits bus-off in ~32 ms and the capture becomes a storm that hides
-    # most IDs. ACK is a link-layer bit, not a command -- this still transmits nothing.
+    # retransmits, hits bus-off in ~32 ms and the capture becomes a storm that
+    # hides most IDs. ACK is a link-layer bit, not a command.
     if ip link set "$IF" type can bitrate 500000 && ip link set "$IF" up; then
         echo "$IF: up at 500000, normal (ACK) mode"
     else
         echo "$IF: FAILED to bring up" >&2
-        RC=1
+        return 1
     fi
+}
+
+RC=0
+for IF in ${1:-$ALL}; do
+    bring_up "$IF" || RC=1
 done
 exit $RC

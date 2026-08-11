@@ -12,5 +12,10 @@
 #
 # Verify a name took:  ip -br link show type can
 
-SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003000294730510220353346", NAME="can-veh"
-SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003500434E56511820313534", NAME="can-yaw"
+# Renaming alone is not enough. A replugged adapter comes back DOWN, state
+# STOPPED, with no bitrate -- and the boot unit is Type=oneshot
+# RemainAfterExit=yes, so systemd never re-runs it. Without the SYSTEMD_WANTS
+# below, pulling the USB and putting it back leaves that bus dead until someone
+# restarts the service by hand.
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003000294730510220353346", NAME="can-veh", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-veh.service"
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003500434E56511820313534", NAME="can-yaw", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-yaw.service"
