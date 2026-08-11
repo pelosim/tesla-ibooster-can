@@ -1,21 +1,37 @@
-# Persistent names for the two CANable adapters on the HVAC Pi.
+# Persistent names for the two CANable adapters on the HVAC Pi, and automatic
+# bring-up when one is (re)plugged.
 #
-# WHY: can0/can1 are assigned in USB enumeration order, so they can swap on reboot.
-# A swap would silently mislabel which bus a capture came from -- the same
+# WHY NAMES: can0/can1 are assigned in USB enumeration order, so they can swap on
+# reboot. A swap would silently mislabel which bus a capture came from -- the same
 # instability that already bit us with adapter indices on macOS, but worse, because
 # nothing about the data announces that it happened.
 #
+# WHY BRING-UP HERE: a replugged adapter comes back DOWN, state STOPPED, with no
+# bitrate. ibooster-can.service is Type=oneshot RemainAfterExit=yes, so systemd
+# considers it active forever and never re-runs it. Without the rules below,
+# pulling a USB lead and putting it back leaves that bus dead until someone
+# intervenes by hand.
+#
+# WHY TWO PASSES: renaming a network interface emits ACTION=="add" under the OLD
+# name and then ACTION=="move" under the NEW one. SYSTEMD_WANTS set on the add
+# rule attaches to the pre-rename device and never reaches the can-veh device
+# unit -- verified by unbind/rebind: the rename worked, the unit never started.
+# The move rule is the one that fires on a real hotplug. The add rule is kept for
+# the case where no rename is needed.
+#
 # CAVEAT: these names follow the ADAPTER, not the wire. If you move the CAN leads
 # between adapters, the names become wrong and nothing will warn you. Label the
-# adapters physically, and note that tools can always re-verify by content --
-# whichever bus carries 0x39D is the vehicle bus.
+# adapters physically; deploy/verify-buses.sh re-checks by content, since whichever
+# bus carries 0x39D is the vehicle bus.
 #
-# Verify a name took:  ip -br link show type can
+# Verify:  ip -br link show type can
 
-# Renaming alone is not enough. A replugged adapter comes back DOWN, state
-# STOPPED, with no bitrate -- and the boot unit is Type=oneshot
-# RemainAfterExit=yes, so systemd never re-runs it. Without the SYSTEMD_WANTS
-# below, pulling the USB and putting it back leaves that bus dead until someone
-# restarts the service by hand.
-SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003000294730510220353346", NAME="can-veh", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-veh.service"
-SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003500434E56511820313534", NAME="can-yaw", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-yaw.service"
+# ── rename (add only; NAME= is invalid on a move event) ─────────────────────
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003000294730510220353346", NAME="can-veh"
+SUBSYSTEM=="net", ACTION=="add", ATTRS{idVendor}=="1d50", ATTRS{idProduct}=="606f", ATTRS{serial}=="003500434E56511820313534", NAME="can-yaw"
+
+# ── bring up, by final name ────────────────────────────────────────────────
+SUBSYSTEM=="net", ACTION=="move", KERNEL=="can-veh", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-veh.service"
+SUBSYSTEM=="net", ACTION=="move", KERNEL=="can-yaw", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-yaw.service"
+SUBSYSTEM=="net", ACTION=="add",  KERNEL=="can-veh", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-veh.service"
+SUBSYSTEM=="net", ACTION=="add",  KERNEL=="can-yaw", TAG+="systemd", ENV{SYSTEMD_WANTS}+="ibooster-can-up@can-yaw.service"

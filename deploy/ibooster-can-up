@@ -8,6 +8,10 @@
 # the unit, or a single loose USB lead takes the whole service down at boot.
 set -u
 
+# udev/systemd start this with a minimal environment. Do not rely on a PATH that
+# happens to include /sbin.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
 ALL="can-veh can-yaw can-steer"
 
 # udev may start the hotplug unit before the rename has landed, so wait a
