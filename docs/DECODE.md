@@ -156,7 +156,7 @@ At rest: `77 2B 00 40 11 00 00 00`
 ### position = 12-bit, and `b4`'s high nibble is STATUS — CORRECTED 2026-08-10
 
     position = b3 | ((b4 & 0x0F) << 8)     12-bit, rest 320, full travel ~3052
-    status   = b4 >> 4                     1 = healthy, 2 = fault
+    status   = b4 >> 4                     0 = initialising, 1 = healthy, 2 = fault
 
 `b3` alone wraps because it is the low byte. Visible directly in the boot trace:
 across a fast push the low nibble climbs `1->2->...->B` and walks back down on
@@ -167,6 +167,18 @@ induced sensor fault moved it 1 -> 2 while `b3` did not change at all, shifting 
 old 16-bit reading by exactly `0x1000`. During healthy operation it is pinned at 1,
 so the two interpretations differ only by a constant — which is why the earlier
 16-bit model fitted every healthy capture and still correlated at r=0.9999.
+
+**Status 0 = initialising**, and the boot trace confirms the split independently.
+`b4` reads `0x01` before the sensor comes up at ~1.47 s and `0x11` after — so the
+12-bit position is **320 both sides of that transition** and only the nibble moves.
+The old 16-bit reading called this "position jumps 320 -> 4416", which was never a
+position change at all. Three states seen so far:
+
+| `b4 >> 4` | Meaning |
+|---|---|
+| `0` | initialising — first ~1.47 s after power-up, position not yet valid |
+| `1` | healthy, assisting |
+| `2` | fault, latched — assist off until a power cycle |
 
 **Validated against the calibrated `0x39D`** on two independent runs:
 

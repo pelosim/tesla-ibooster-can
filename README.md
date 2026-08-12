@@ -4,8 +4,9 @@ Decoding the CAN output of a **Bosch iBooster Gen1** — Tesla PN **`1037123-00-
 listing fitment **2016–2020 Model S** — so a 1987 Porsche 944S restomod can read
 brake pedal position. **Nothing in this repo ever transmits to the booster.**
 
-Bench bring-up completed 2026-08-06. Everything below is measured on this unit, not
-inherited from other iBooster variants.
+Bench bring-up 2026-08-06, fault signalling 2026-08-10, in service on the car's Pi
+since 2026-08-11. Everything below is measured on this unit, not inherited from other
+iBooster variants.
 
 ---
 
@@ -40,8 +41,14 @@ mm = (counts − 3.3) / 320.68        rest ≈ 264 · end stop 13606 = 43.4 mm
 ```
 b1       = alive counter, 0x20..0x2F (low nibble counts)
 position = b3 | ((b4 & 0x0F) << 8)     12-bit, rest 320, full ~3052
-status   = b4 >> 4                     1 = healthy, 2 = fault
+status   = b4 >> 4                     0 = initialising, 1 = healthy, 2 = fault
+
+mm = 0.015207 * position - 4.072       rest 320 -> 0.79 · full 3052 -> 42.34
 ```
+
+⚠️ That offset is **negative**. Masking the status nibble subtracts a constant 4096
+counts from the 16-bit form. Publishing `+1.94` here once cost a downstream consumer
+a display reading 6.8 mm at rest against `0x39D`'s 0.8 mm.
 
 `b3` alone **wraps** — it is the low byte, not the whole field. Correlates with
 `0x39D` at **r = 0.9999** over 15,296 matched samples.
@@ -100,6 +107,22 @@ the booster and your monitor are the only two nodes.
 
 **3 · A powered transceiver idles at 2.5 V even when the ECU is dead.** That reading
 proves the transceivers have power. It proves nothing about the ECU running.
+
+**4 · "The bus is silent" is not a diagnosis.** Which *kind* of silent is, and the
+controller already knows — it is in the error counters, which is the one thing nobody
+reads. This table turned a recurring hour of meter work into one glance:
+
+| Signature | Means |
+|---|---|
+| silent, error counters **not** moving | nothing is driving the pair at all — **wiring** |
+| error counters climbing | bitrate, polarity, or termination |
+| `ERROR-PASSIVE` / `BUS-OFF` | nothing is ACKing — the 2-node trap above |
+| **all** buses silent together | power or ignition; one loose lead cannot silence two |
+| interface `DOWN` / `STOPPED` | never brought up — see hotplug below |
+
+```bash
+ip -details -statistics link show can-veh   # state + bus-errors + restarts
+```
 
 ---
 
@@ -160,6 +183,25 @@ reboot**, silently mislabelling which bus a capture came from.
 ⚠️ Those names follow the **adapter**, not the wire. Move a CAN lead between
 adapters and the names become wrong with no warning — hence `verify-buses.sh`, which
 checks by content (whichever bus carries `0x39D` is the vehicle bus).
+
+**Hotplug is handled, and the mechanism is not obvious.** A replugged adapter comes
+back `DOWN`/`STOPPED` with no bitrate, and the boot unit is `Type=oneshot
+RemainAfterExit=yes` so systemd never re-runs it. Renaming a netdev emits
+`ACTION=="add"` under the **old** name and `ACTION=="move"** under the new one, so a
+`SYSTEMD_WANTS` on the add rule attaches to the pre-rename device and never reaches
+`can-veh`. The rules bind it to **move**.
+
+⚠️ **Test hotplug by unbinding and rebinding the real USB device.** Neither
+`udevadm trigger --action=add` nor a `gs_usb` module reload is faithful — the first
+synthesises an event on a device already present under its final name, the second
+happens too fast for systemd's device units to go inactive. Both reported success on
+a fix that did nothing.
+
+```bash
+echo 1-1.3.1:1.0 | sudo tee /sys/bus/usb/drivers/gs_usb/unbind
+sleep 4
+echo 1-1.3.1:1.0 | sudo tee /sys/bus/usb/drivers/gs_usb/bind
+```
 
 ## Raw captures are committed
 
