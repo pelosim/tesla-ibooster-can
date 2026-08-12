@@ -2,8 +2,12 @@
 build/
 */build/
 
+# Python
+__pycache__/
+*.pyc
+
 # Captures are deliberately committed: they are the evidence behind every claim
-# in docs/DECODE.md, so the decode can be re-derived with tools/analyze.py.
+# in docs/DECODE.md, so the decode can be re-derived with tools/analyze.py and tools/events.py.
 # Bench frames only — no vehicle-identifying data.
 
 # macOS

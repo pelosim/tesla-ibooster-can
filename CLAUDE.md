@@ -85,6 +85,7 @@ locations. Anything earlier would be encoding guesses.
 | `report/index.html` | Self-contained plotted data |
 | `report/correlations.html` | Correlation analysis of the non-position IDs |
 | `tools/` | Python capture + analysis (gs_usb over libusb) |
+| `tools/events.py` | **Re-derives every 2026-08-11 claim from `logs/`; non-zero exit if the docs disagree** |
 | `tools/99-ibooster.rules` | udev rule pinning the sniffer to `/dev/ibooster` |
 | `logs/` | Captures — **committed**, they are the evidence behind DECODE.md |
 

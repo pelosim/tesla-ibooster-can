@@ -489,10 +489,19 @@ described in the next section, and its `b4:b7` cluster is analysed there.
 inside ~120 ms**. The earlier entry called this group "event driven, trigger unknown",
 having seen it at 6.9 s in one run and 56.7 s in another.
 
-**The trigger is a brake release.** Across all six logs: 10 bursts, 10 preceding brake
-applications, lag **0.6 – 2.2 s** after release. No burst occurs without one, and no
-application over ~1.5 mm fails to produce one. The two timestamps that looked
-arbitrary were simply the first brake application in each run.
+**The trigger is a brake release.** Across all six logs: **12 complete bursts, 10 of
+them following a brake release** by **0.64 – 2.20 s**, and no pedal application fails
+to produce one. The two timestamps that looked arbitrary were simply the first brake
+application in each run.
+
+⚠️ **The other 2 are a boot burst, and this file briefly claimed they did not exist.**
+`cal` and `assist` each emit one complete burst at **~6.8 s of uptime with no pedal
+input at all**. `stroke-sweep-1` started capturing at 44 s of uptime and `cal2` was
+mid-sweep, so only two runs could have seen it. The `0x33D` section above had already
+recorded this in 2026-08-06 — "the third fired at rest shortly after boot, coincident
+with the burst group" — and the first version of this section overrode it with a
+tidier claim that had simply never been checked against the *unpaired* bursts.
+`tools/events.py --check trigger` now checks them explicitly.
 
 That pairs each burst with an application whose peak, duration and shape are known
 independently from `0x39D`, which is what makes the payload decodable at all.
@@ -501,14 +510,21 @@ independently from `0x39D`, which is what makes the payload decodable at all.
 
 | Field | Is | Scale | r |
 |---|---|---|---|
-| `0x38D b5:b6` uint16 LE | **peak rod travel of that application** | 129.8 counts/mm | **0.9997** |
-| `0x37D b0:b1` uint16 LE | **how long the brake was applied** | 27.5 ticks/s | **0.9988** |
+| `0x38D b5:b6` uint16 LE | **peak rod travel of that application** | 129.3 counts/mm | **0.99975** |
+| `0x37D b0:b1` uint16 LE | **how long the brake was applied** | 27.50 ticks/s | **0.99877** |
 | `0x31D b2 >> 4` | the same duration, log-bucketed | 1..7, ~one step per doubling | 0.884 |
 | `0x31D b0:b1`, `0x3AD b0:b1` | **uptime**, not event data | 9.99 ticks/s (100 ms) | — |
 
-`0x38D b5:b6` tracks the calibrated stroke to within **±0.8 mm** over a 33 mm range —
+`0x38D b5:b6` tracks the calibrated stroke to within **0.66 mm** over a 34 mm range —
 tighter than the ±2 mm the ruler calibration itself is good to. Four separate
 end-stop hits across three power cycles land within 8 counts of each other.
+
+⚠️ **Do not apply the fault-sentinel reject when measuring peaks.** The "reject
+`0x39D` stroke > 13700" rule under *Fault signalling* is right for a consumer and
+wrong for this analysis: the end stop reads 13606 but **overshoots to 14070 on a fast
+strike**, so that rule clips real travel. A first pass here did exactly that and
+published 129.8 counts/mm; with the overshoot restored it is 129.3, and the fit gets
+*better*, not worse. The sentinel is 16354 — reject on that, or on > 14100.
 
 `0x37D b0:b1`'s **27.5 ticks/s is not a round number**, and that is the open part.
 Either the tick is ~36 ms, or the booster starts and stops its timer at a threshold
@@ -539,6 +555,15 @@ two completely, and nothing short of that will.
 
 `0x31D b6` (r = -0.93 with peak, only 0.60 with uptime) is more likely real: it reads
 `0` at full travel, `1` mid, `2` shallow — an inverse peak bucket. Still a lead.
+
+### Reproducing all of it
+
+    python3 tools/events.py                     # every check
+    python3 tools/events.py --check trigger     # one section
+
+It reads `logs/` and re-derives every number in this section, plus the CRC, the
+`0x32D` identity comparison and the flag thresholds. It exits non-zero if the logs
+and this file disagree.
 
 ### ⚠️ Ten events is not many
 

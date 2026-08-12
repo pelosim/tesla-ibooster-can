@@ -133,20 +133,22 @@ second after it ends**, and two fields of it decode outright:
 
 | Field | Is | r |
 |---|---|---|
-| `0x38D b5:b6` | peak rod travel of that application, 129.8 counts/mm | **0.9997** |
-| `0x37D b0:b1` | how long the brake was held, 27.5 ticks/s | **0.9988** |
+| `0x38D b5:b6` | peak rod travel of that application, 129.3 counts/mm | **0.99975** |
+| `0x37D b0:b1` | how long the brake was held, 27.50 ticks/s | **0.99877** |
 
-`0x38D b5:b6` agrees with the calibrated `0x39D` stroke to ±0.8 mm — tighter than the
+`0x38D b5:b6` agrees with the calibrated `0x39D` stroke to 0.66 mm — tighter than the
 ±2 mm the ruler calibration is itself good to.
 
 ### What made the burst decodable was finding its trigger
 
 The `0x31D/34D/36D/37D/38D` group was logged as "event driven, trigger unknown", seen
-at 6.9 s in one run and 56.7 s in another. Pooling all six logs: **10 bursts, 10
-preceding brake applications, lag 0.6–2.2 s after release, no exceptions.** Those two
-timestamps were just the first brake application in each run. Pairing each burst with
-an application whose peak and duration are known from `0x39D` is what turned a wall of
-hex into a fit.
+at 6.9 s in one run and 56.7 s in another. Pooling all six logs: **12 complete bursts,
+10 of them 0.64–2.20 s after a brake release**, and no application fails to produce
+one. Pairing each burst with an application whose peak and duration are known from
+`0x39D` is what turned a wall of hex into a fit.
+
+The remaining 2 are a **boot burst** at ~6.8 s of uptime with no pedal input — see the
+correction below.
 
 `0x33D` turns out not to be a separate message either — every payload-carrying `0x33D`
 frame lands inside that same burst.
@@ -189,7 +191,9 @@ events. The two 0.999 fits survive a 20,000-iteration permutation test. Below
 deep application was usually a long one — these were calibration sweeps, not a
 designed experiment.
 
-Plotted output: `report/correlations.html`.
+Plotted output: `report/correlations.html`. Reproduce every number with
+`python3 tools/events.py`, which re-derives them from `logs/` and exits non-zero if
+they and `docs/DECODE.md` disagree.
 
 ---
 
@@ -200,6 +204,13 @@ Plotted output: `report/correlations.html`.
 | "`0x33D` `b0` is a checksum — a sum over `b1..b7` validates on 99.87% of frames" | The at-rest payload is constant, and it is 99.8% of all `0x33D` frames. Any constant passes. Checked against the ~10 frames that actually carry a payload, it fails every one. **A checksum hypothesis is only tested by the frames that vary** |
 | "`0x37D b5` splits deep from shallow applications" | True and useless — every shallow application in the set also came late in the longest run. Adding an uptime control column is what caught it |
 | "`0x38F b3` moves, so it is a signal" | It moves and correlates with nothing (r = 0.009 against position). A byte that changes is not automatically a measurement |
+| **"No burst occurs without a brake release"** | Only the *paired* bursts were ever examined. There are 12 bursts, not 10: `cal` and `assist` each fire one at ~6.8 s of uptime with no pedal input. Worse, `DECODE.md` had recorded that boot burst back on 2026-08-06 and this pass overrode it. **Committed before `tools/events.py` existed; the tool found it within a minute of first running** |
+| **"129.8 counts/mm, ±0.8 mm"** for `0x38D b5:b6` | Reused the consumer-facing "reject stroke > 13700" fault rule as an analysis filter. The end stop reads 13606 but **overshoots to 14070**, so that clipped real peaks out of `stroke-sweep-1`. Correct figures: **129.3 counts/mm, 0.66 mm**, and the fit improves |
+
+**The pattern in the last two:** both were committed on the strength of a one-off
+script that has since been deleted, and both fell over the first time the same claims
+were re-derived by something reproducible. That is the argument for `tools/events.py`
+in one line.
 
 ---
 
