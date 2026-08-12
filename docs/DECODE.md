@@ -118,7 +118,10 @@ millimetres, which nothing currently does.
 - Whether `b1` rolling over or a checksum failure ever signals anything meaningful.
 - Whether the 0xA0 constant is fixed or derived from the CAN ID. `0x39D + 3 = 0x3A0`,
   whose low byte is `0xA0` — that is almost certainly a coincidence, but a second
-  message with a checksum would settle it.
+  message with an *additive* checksum would settle it. **The YAW pair is not that
+  second message** (2026-08-11): `0x38E`/`0x38F` use a CRC-8, not a sum, and share
+  one parameter set between them rather than deriving anything from the ID. So the
+  question stays open, and `0x39D` remains the only additive checksum on this unit.
 
 ---
 
@@ -146,12 +149,14 @@ At rest: `77 2B 00 40 11 00 00 00`
 
 | Byte | Field | Notes |
 |---|---|---|
-| `b0` | checksum? | ranges 1E..F9, varies every frame — same role as `0x39D` `b0` |
+| `b0` | **CRC-8 over `b1..b7`** | Not a data byte — see "Message integrity" below. CORRECTED 2026-08-11 |
 | `b1` | alive counter | `0x20`..`0x2F` — low nibble counts, upper nibble fixed at 2 |
-| `b2` | — | constant `00` at rest |
+| `b2` | — | constant `00` |
 | `b3` | position, **LOW byte** | `0x40` at settled rest; wraps, because it is not the whole field |
 | `b4` | **low nibble** = position high bits · **high nibble** = STATUS | `0x11` at settled rest |
-| `b5:b7` | — | constant `00` |
+| `b5` | — | constant `00` |
+| `b6` | **brake flag** | `0`/`1`. CORRECTED 2026-08-11 — was listed as constant |
+| `b7` | — | constant `00` |
 
 ### position = 12-bit, and `b4`'s high nibble is STATUS — CORRECTED 2026-08-10
 
@@ -219,6 +224,25 @@ above are the check — any edit that does not reproduce 0.79 and 42.34 is wrong
 The community's *idle* `0x40` for `b3` transfers exactly. Their `0xC0` full-scale
 claim does not, because `b3` is only the low byte on this firmware.
 
+### `b6` — brake flag — CONFIRMED 2026-08-11
+
+`b6` was recorded above as part of a constant `b5:b7` block. It is not constant: it
+is a **1-bit brake-applied flag with real hysteresis**, and it was missed because
+every earlier pass judged bytes by smoothness, which ranks a two-value flag as
+noise.
+
+| Edge | 12-bit position | mm | Runs |
+|---|---|---|---|
+| `0` → `1` | 411 – 427 | **2.18 – 2.42** | 4 |
+| `1` → `0` | 381 – 383 | **1.72 – 1.75** | 4 |
+
+**~0.55 mm of hysteresis**, and the off-threshold repeats to within 2 counts across
+four independent power cycles. The spread on the on-threshold is run-to-run
+variation in how fast the pedal was moved, not sensor noise.
+
+This is the cleanest brake signal on either bus: one bit, at 99.7 Hz, in the same
+message as the position and status it belongs with.
+
 ---
 
 ## Power-up sequence — CONFIRMED 2026-08-06
@@ -240,16 +264,98 @@ pre-init reading) to 4416 (`b4=0x11`, true rest). Treat anything before that as
 invalid.
 
 `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` are **not** part of boot — they appeared at
-6.9 s in one run and 56.7 s in the other, always as a group within ~100 ms. Event
-driven, trigger unknown.
+6.9 s in one run and 56.7 s in the other, always as a group within ~100 ms. **Trigger
+found 2026-08-11: a brake release.** Those two timestamps were the first brake
+application in each run. See "The post-brake burst".
 
-## `0x38F` — YAW bus — NOT decoded
+## `0x38F` — YAW bus — MOSTLY DECODED 2026-08-11
 
 500 kbps · DLC 8 · **49.8 Hz** · at rest `3F 2D E2 53 02 00 00 00`
 
-Same header shape: `b0` varies every frame (checksum), `b1` = `0x20`..`0x2F`
-counter. `b2:b4` constant at rest (`E2 53 02`), `b5:b7` zero. Nothing moved at rest —
-needs a pedal sweep before anything can be said.
+The earlier note said "nothing moved at rest — needs a pedal sweep". The pedal sweeps
+were already on disk; nobody had looked at this ID in them.
+
+| Byte | Field | Notes |
+|---|---|---|
+| `b0` | **CRC-8 over `b1..b7`** | Same parameters as `0x38E`. Carries no data |
+| `b1` | alive counter | `0x20`..`0x2F` |
+| `b2` | **state byte** | bit 0 = brake, bits 5:3 = travel/health state. See below |
+| `b3` | — | `0x53`/`0x55`. Moves, but not with anything — see below |
+| `b4:b7` | — | constant `02 00 00 00` |
+
+### `b2` — the state byte
+
+Only six values were ever seen across four power cycles:
+
+| `b2` | Meaning | When |
+|---|---|---|
+| `0x40` `0x42` `0x62` | booting | first ~2 s, in that order, one bit at a time |
+| **`0xE2`** | ready, brake released | idle |
+| **`0xE3`** | **brake applied** | bit 0 set |
+| **`0xDB`** | **near end of travel** | bit 0 still set; bits 5:3 change together |
+| `0xCC` | fault | from the induced-fault run, 2026-08-10 |
+
+**`bit 0` is a second brake flag, and it trips *earlier* than `0x38E b6`:**
+
+| Flag | on at | off at |
+|---|---|---|
+| `0x38F b2` bit 0 | **1.45 – 1.66 mm** | not resolved — see below |
+| `0x38E b6` | 2.18 – 2.42 mm | 1.72 – 1.75 mm |
+
+Two brake signals at two thresholds is the shape of the redundant switch pair an ESP
+module expects. ⚠️ **`0x38F`'s release edge is rate-limited, not measured**: at 49.8 Hz
+during a fast pedal return only one or two frames land in the transition, so the
+observed off positions scatter from 1.45 to 4.11 mm. Do not quote a number for it.
+`0x38E b6` at 99.7 Hz resolves its own release edge to 2 counts, which is why it is
+the flag to use.
+
+**`0xE3` → `0xDB` is a third threshold, near the end of travel:**
+
+| Edge | mm | Runs |
+|---|---|---|
+| `0xE3` → `0xDB` | **39.75 – 40.16** | 4 |
+| `0xDB` → `0xE3` | 38.77 – 39.51 | 4 |
+
+The end stop is 43.4 mm, so this flags roughly the last 3.5 mm. Whether it means
+"end of travel", "maximum assist" or something else cannot be told apart on a bench
+with no hydraulics — all three coincide here.
+
+Read `bits 5:3` as the field: `110` ready · `011` near end of travel · `001` fault ·
+`000`/`100` booting. Bits 3 and 4 always move together and bit 5 opposes them, which
+is why they read as one field rather than three flags.
+
+### `b3` is not a signal
+
+`b3` takes `0x53` and `0x55` and changes often, but it correlates with **nothing** —
+r = 0.009 against position, 0.000 against pedal velocity. It is not a position, not a
+brake state, and not a counter (it does not increment). Left undecoded deliberately:
+a byte that moves is not automatically a measurement.
+
+---
+
+## Message integrity — CONFIRMED 2026-08-11
+
+Two different schemes, one per bus, and the difference matters to a consumer.
+
+| Bus | ID | Scheme |
+|---|---|---|
+| Vehicle | `0x39D` | additive — `(b1+b2+b3+0xA0) & 0xFF` |
+| YAW | `0x38E`, `0x38F` | **CRC-8/SAE-J1850** over `b1..b7` |
+| Vehicle | everything else | **none** |
+
+    poly 0x1D · init 0x00 · xorout 0x0A · no reflection, in or out
+
+**Validates on 100% of 46,960 `0x38E` frames and 23,478 `0x38F` frames** across four
+power cycles — 70,438 frames, zero failures. Both IDs use the same parameters, so the
+CRC is *not* seeded from the message ID.
+
+Two consequences worth keeping:
+
+1. **`0x38E b0` and `0x38F b0` contain no data.** They looked random and scored as
+   "active" on every ranking pass. They are a checksum, and the question of whether
+   something was hiding in them is closed.
+2. **The burst IDs have no checksum at all**, which is exactly why their `b0` is free
+   to carry a payload — and it does, in several of them.
 
 ---
 
@@ -333,10 +439,10 @@ far more pedal effort.
 |---|---|---|---|
 | `0x39D` | 25.0 Hz | `B5 0C 08 01` | decoded above |
 | `0x33D` | 9.5 Hz | `00 00 FF FF FF FF FF FF` | **event message** — see below |
-| `0x35D` | 1.0 Hz | `05 55 55 55 55 55 55 55` | `0x55` fill — placeholder |
-| `0x32D` | 0.5 Hz | `0D 00 00 00 8D 79 20 21` | structured; identity or config? |
-| `0x3AD` | 0.2 Hz | — | appears under activity |
-| `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` | 0.1 Hz | — | **appear together in a burst**, 6 frames each, first seen within 0.1 s of one another. Likely one logical group |
+| `0x35D` | 1.0 Hz | `05 55 55 55 55 55 55 55` | `0x55` fill — placeholder. `b0` counts `00`..`07` at boot then sticks |
+| `0x32D` | 0.5 Hz | `0D 00 00 00 8D 79 20 21` | **static identity, multiplexed** — decoded below 2026-08-11 |
+| `0x3AD` | 0.2 Hz | — | `b0:b1` = uptime counter, below |
+| `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` | event | — | **the post-brake burst** — trigger found 2026-08-11, below |
 | `0x5BD` | one-shot | `CF 40 01 00 00 00 00 00` | seen once |
 
 ⚠️ `0x33D`'s bytes rank as "smooth" in `analyze.py` but are a **false positive**: they
@@ -367,3 +473,118 @@ exists it is elsewhere.
 `b2:b3` is small (`0A 00`, `0000`, `0000`), and `b4..b7` cluster tightly in
 `0x52..0x5A`. Decoding this needs a run with many deliberate, varied brake
 applications — vary force, depth and duration and see which field follows what.
+
+### It is not alone — it is part of a burst — 2026-08-11
+
+Pooling all six logs gives 10 payload-carrying `0x33D` frames instead of 3, and every
+one of them arrives **inside the `0x31D/34D/36D/37D/38D` burst**, within ~120 ms.
+`0x33D` is not a separate message with its own trigger; it is one member of the group
+described in the next section, and its `b4:b7` cluster is analysed there.
+
+---
+
+## The post-brake burst — TRIGGER CONFIRMED 2026-08-11
+
+`0x33D` `0x31D` `0x34D` `0x36D` `0x37D` `0x38D` transmit **one frame each, together,
+inside ~120 ms**. The earlier entry called this group "event driven, trigger unknown",
+having seen it at 6.9 s in one run and 56.7 s in another.
+
+**The trigger is a brake release.** Across all six logs: 10 bursts, 10 preceding brake
+applications, lag **0.6 – 2.2 s** after release. No burst occurs without one, and no
+application over ~1.5 mm fails to produce one. The two timestamps that looked
+arbitrary were simply the first brake application in each run.
+
+That pairs each burst with an application whose peak, duration and shape are known
+independently from `0x39D`, which is what makes the payload decodable at all.
+
+### What decodes
+
+| Field | Is | Scale | r |
+|---|---|---|---|
+| `0x38D b5:b6` uint16 LE | **peak rod travel of that application** | 129.8 counts/mm | **0.9997** |
+| `0x37D b0:b1` uint16 LE | **how long the brake was applied** | 27.5 ticks/s | **0.9988** |
+| `0x31D b2 >> 4` | the same duration, log-bucketed | 1..7, ~one step per doubling | 0.884 |
+| `0x31D b0:b1`, `0x3AD b0:b1` | **uptime**, not event data | 9.99 ticks/s (100 ms) | — |
+
+`0x38D b5:b6` tracks the calibrated stroke to within **±0.8 mm** over a 33 mm range —
+tighter than the ±2 mm the ruler calibration itself is good to. Four separate
+end-stop hits across three power cycles land within 8 counts of each other.
+
+`0x37D b0:b1`'s **27.5 ticks/s is not a round number**, and that is the open part.
+Either the tick is ~36 ms, or the booster starts and stops its timer at a threshold
+slightly different from the 600-count threshold used to measure the applications.
+Refitting against thresholds from 400 to 1000 counts moves the slope by less than
+0.2%, so the booster's threshold is low — but that does not pin the tick.
+
+**A logarithmic bucket is a diagnostic shape, not a control shape.** Taken with the
+fact that the whole burst fires *after* the event is over, the sensible reading of
+this group is **event-memory / statistics**, not a signal anything downstream is meant
+to act on. Nothing in it is useful for live display.
+
+### What does not decode, and why
+
+⚠️ **`0x33D b4:b7`** — four bytes that always sit within a few counts of each other in
+the range 76..90, all four drifting up with peak travel (r = 0.53 to 0.92) but far too
+compressed to be a position. Four near-identical channels of one quantity is the shape
+of a redundant sensor set or repeated supply samples. **Unresolved.**
+
+⚠️ **`0x37D b5` and `0x34D b5` are confounded with uptime and must not be quoted.**
+`0x37D b5` takes `0x58` on deep applications and `0x5C` on shallow ones (r = -0.90
+with peak) — but every shallow application in the set also came late in the longest
+run, and it correlates r = +0.82 with uptime. Peak and uptime split these ten events
+identically, so the data cannot say which one drives it. Same for `0x34D b5`, which
+steps `0x26` → `0x28` → `0x2A` monotonically with uptime (r = 0.88) and looks like a
+slowly warming temperature — a 20-minute soak with **no pedal input** separates the
+two completely, and nothing short of that will.
+
+`0x31D b6` (r = -0.93 with peak, only 0.60 with uptime) is more likely real: it reads
+`0` at full travel, `1` mid, `2` shallow — an inverse peak bucket. Still a lead.
+
+### ⚠️ Ten events is not many
+
+Every number in this section rests on **n = 10**, with far more candidate bytes than
+events. The two 0.999 fits survive a 20,000-iteration permutation test and are safe.
+Below |r| ≈ 0.9, treat anything here as a lead. Peak and duration are also partly
+confounded in this set, because a deep application was usually also a long one —
+these were calibration sweeps, not a designed experiment. **20–30 short applications
+with depth, speed and hold time varied independently** would settle most of what is
+left open above.
+
+---
+
+## `0x32D` — static identity — CONFIRMED 2026-08-11
+
+500 kbps · DLC 8 · 0.5 Hz · **multiplexed on `b0`**
+
+Five frames rotate on a 2-second cycle, selected by `b0`:
+
+| mux `b0` | `b1..b7` |
+|---|---|
+| `0x0A` | `01 00 00 00 00 70 00` |
+| `0x0B` | `00 02 01 01 00 00 00` |
+| `0x0D` | `00 00 00 8D 79 20 21` |
+| `0x14` | `05 00 00 60 FC B0 70` |
+| `0x16` | `00 00 00 E4 AC A3 2F` |
+
+**Byte-for-byte identical across all four independent power cycles**, and nothing in
+it responds to the pedal. This is a part number, calibration ID or similar. Settled:
+it was previously listed as "structured; identity or config?".
+
+A monitor can read it once at boot and ignore the message afterwards. It is also the
+only candidate left for a stored unit identity, which makes it worth logging once per
+boot even though it never changes.
+
+---
+
+## `0x31D` / `0x3AD` `b0:b1` — uptime, and a correlation trap
+
+A 16-bit little-endian counter at **9.99 ticks/s** — a 100 ms tick — running from
+booster power-on. Both IDs carry the same counter, offset only by their position
+within the burst. Confirmed across four runs including one where the capture started
+long after the booster was powered (the counter was already at 442).
+
+**It is the reason this section exists rather than a list of findings.** Later events
+in a run had longer and deeper pedal applications than earlier ones, so an uptime
+counter correlates with peak, duration and work done well enough to impersonate a
+measurement. Any future analysis of this burst should carry uptime as a control
+column and discount anything that tracks it as closely as it tracks the brake event.

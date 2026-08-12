@@ -83,6 +83,7 @@ locations. Anything earlier would be encoding guesses.
 | `docs/DECODE.md` | **Confirmed signal definitions and calibration** |
 | `docs/BENCH_LOG.md` | Dated findings + the reasoning errors made along the way |
 | `report/index.html` | Self-contained plotted data |
+| `report/correlations.html` | Correlation analysis of the non-position IDs |
 | `tools/` | Python capture + analysis (gs_usb over libusb) |
 | `tools/99-ibooster.rules` | udev rule pinning the sniffer to `/dev/ibooster` |
 | `logs/` | Captures — **committed**, they are the evidence behind DECODE.md |

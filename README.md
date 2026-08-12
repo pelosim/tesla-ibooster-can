@@ -81,6 +81,8 @@ connector properly.
 
 Full signal definitions: **[docs/DECODE.md](docs/DECODE.md)**.
 Plotted data: **[report/index.html](report/index.html)** (self-contained, opens offline).
+Correlation analysis: **[report/correlations.html](report/correlations.html)** — what the
+other eleven message IDs carry, and what tracks what.
 
 ---
 

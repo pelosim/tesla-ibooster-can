@@ -119,19 +119,115 @@ loop with no restart.
 
 ---
 
+## 2026-08-11 — Second pass over the existing logs: no new captures needed
+
+No hardware was touched. This session re-read the six committed logs — 91,439 frames,
+14 IDs, four power cycles — asking what everything *other* than rod position does.
+Four of the six items on the old "still open" list closed without a bench session.
+
+**The headline answer to "where are the assist numbers":** there aren't any, live.
+Every field that moves while the pedal moves is position or a threshold flag derived
+from position — that is now a measured result across all 14 IDs, not an absence of
+looking. What the booster does emit is a **summary of each brake application, about a
+second after it ends**, and two fields of it decode outright:
+
+| Field | Is | r |
+|---|---|---|
+| `0x38D b5:b6` | peak rod travel of that application, 129.8 counts/mm | **0.9997** |
+| `0x37D b0:b1` | how long the brake was held, 27.5 ticks/s | **0.9988** |
+
+`0x38D b5:b6` agrees with the calibrated `0x39D` stroke to ±0.8 mm — tighter than the
+±2 mm the ruler calibration is itself good to.
+
+### What made the burst decodable was finding its trigger
+
+The `0x31D/34D/36D/37D/38D` group was logged as "event driven, trigger unknown", seen
+at 6.9 s in one run and 56.7 s in another. Pooling all six logs: **10 bursts, 10
+preceding brake applications, lag 0.6–2.2 s after release, no exceptions.** Those two
+timestamps were just the first brake application in each run. Pairing each burst with
+an application whose peak and duration are known from `0x39D` is what turned a wall of
+hex into a fit.
+
+`0x33D` turns out not to be a separate message either — every payload-carrying `0x33D`
+frame lands inside that same burst.
+
+### Three things that were recorded as constant or unknown, and are not
+
+- **`0x38E b6` is a brake flag** — on at 2.18–2.42 mm, off at 1.72–1.75 mm, ~0.55 mm
+  hysteresis, repeating to 2 counts across four power cycles. It sat inside a byte
+  range documented as "constant `00`".
+- **`0x38F b2` is a state byte** with a *second* brake bit at a lower threshold
+  (1.45–1.66 mm) and a third state at ~40 mm, near the end of travel. The old entry
+  said "nothing moved at rest — needs a pedal sweep"; the pedal sweeps were already
+  on disk.
+- **`0x32D` is static identity data**, multiplexed on `b0`, byte-identical across all
+  four power cycles.
+
+**`0x38E`/`0x38F` byte 0 is CRC-8/SAE-J1850** (poly `0x1D`, init `0x00`, xorout `0x0A`,
+over `b1..b7`) — 100% of 70,438 frames, same parameters for both IDs. That closes the
+question of whether anything was hiding in a byte that looked random. Nothing was.
+
+### The trap this session had to work around
+
+**`0x31D`/`0x3AD b0:b1` is an uptime counter at 9.99 ticks/s**, and it fakes
+correlations with everything. Later events in a run had longer, deeper applications
+than earlier ones, so uptime tracks peak, duration and work done well enough to
+impersonate a measurement. It is excluded from the analysis and carried as a control
+column instead.
+
+Two candidate findings failed that control and are **not** claimed: `0x37D b5`
+(r = -0.90 with peak, but +0.82 with uptime) and `0x34D b5` (r = 0.88 with uptime,
+stepping `0x26`→`0x28`→`0x2A` like a warming temperature). Peak and uptime split
+these ten events identically. A 20-minute soak with no pedal input separates them;
+nothing in the existing logs does.
+
+### Method note
+
+Every number here rests on **n = 10** events with far more candidate bytes than
+events. The two 0.999 fits survive a 20,000-iteration permutation test. Below
+|r| ≈ 0.9 nothing is claimed. Peak and duration are also partly confounded, because a
+deep application was usually a long one — these were calibration sweeps, not a
+designed experiment.
+
+Plotted output: `report/correlations.html`.
+
+---
+
+## Reasoning errors made in the 2026-08-11 pass
+
+| Claim | Why it was wrong |
+|---|---|
+| "`0x33D` `b0` is a checksum — a sum over `b1..b7` validates on 99.87% of frames" | The at-rest payload is constant, and it is 99.8% of all `0x33D` frames. Any constant passes. Checked against the ~10 frames that actually carry a payload, it fails every one. **A checksum hypothesis is only tested by the frames that vary** |
+| "`0x37D b5` splits deep from shallow applications" | True and useless — every shallow application in the set also came late in the longest run. Adding an uptime control column is what caught it |
+| "`0x38F b3` moves, so it is a signal" | It moves and correlates with nothing (r = 0.009 against position). A byte that changes is not automatically a measurement |
+
+---
+
 ## Still open
 
-1. **No periodic status or fault message has been found on either bus.** Everything
-   decoded is position or events. The panel-B fault indicator in the Phase 7 plan
-   assumes a signal that has not turned up — it may be in `0x32D`, in the burst
-   group, or absent because the booster has nothing to complain about on a bench.
-2. **`0x33D` payload** — needs a run with many deliberate brake applications varying
-   force, depth and duration. Three samples is not enough.
-3. **The `0x31D/34D/36D/37D/38D` burst group** — fires together within ~100 ms, at
-   6.9 s in one run and 56.7 s in another. Event driven, trigger unknown.
-4. **`0x38F`** (49.8 Hz, YAW) — `b2` and `b3` move; nothing decoded.
+1. ~~**No periodic status or fault message.**~~ **Closed** — resolved 2026-08-10:
+   status is a *field* inside the position messages (`0x38E b4>>4`), not a message of
+   its own, which is why looking for a message never found one. The 2026-08-11 pass
+   adds two brake flags and a near-end-of-travel state to what the panel-B indicator
+   can draw on.
+2. ~~**`0x33D` payload**~~ — **partly closed.** It is one member of the post-brake
+   burst, not a message with its own trigger. Its `b4:b7` quad is still undecoded.
+3. ~~**The `0x31D/34D/36D/37D/38D` burst group**~~ — **closed.** Trigger is a brake
+   release; two fields decoded. See `docs/DECODE.md`.
+4. ~~**`0x38F`**~~ — **closed.** `b0` CRC, `b1` counter, `b2` state byte with a brake
+   bit and a travel state. `b3` moves but correlates with nothing.
 5. **Does it transmit on pins 1+9 without ignition?** Never measured — every
    successful capture had ignition live. Would let future bench work happen with the
    motor unable to move.
 6. **Calibration to better than ~2 mm** would need a dial indicator on a fixed datum
    and a *single* run across the whole range. Not needed for display and logging.
+7. **`0x33D b4:b7`** — four tightly-clustered channels, 76..90, tracking peak travel
+   on a compressed scale. Redundant sensor channels or sampled supply readings; a
+   bench-supply sweep from 11 V to 14 V while braking identically separates them.
+8. **`0x37D b0:b1`'s tick is not a round number** (27.5/s). Either a ~36 ms tick, or
+   the booster's own start/stop threshold differs from the one used to measure.
+9. **Is `0x34D b5` a temperature?** Needs a 20-minute powered soak with **no pedal
+   input** — uptime and cumulative braking are confounded in every log on disk.
+10. **A designed brake-event run** — 20–30 short applications varying depth, speed and
+    hold time independently. This is the single capture that would close the most:
+    items 7, 8 and most of what is marked "lead" in the burst section.

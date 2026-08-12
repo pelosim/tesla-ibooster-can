@@ -1,0 +1,584 @@
+<meta charset="utf-8">
+<title>iBooster CAN &mdash; what correlates with what</title>
+<style>
+:root{
+  color-scheme: light;
+  --plane:#f4f4f1; --surface:#fcfcfb; --surface-2:#f0f0ec;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --rule:#e1e0d9; --rule-2:#c3c2b7;
+  --veh:#2a78d6; --yaw:#eb6834; --aqua:#1baf7a;
+  --crit:#d03b3b; --good:#0ca30c;
+  --seq1:#86b6ef; --seq2:#5598e7; --seq3:#2a78d6; --seq4:#184f95;
+  --pos:#2a78d6; --neg:#d03b3b; --mid:#e6e5e0;
+  --shadow:rgba(11,11,11,.07);
+}
+@media (prefers-color-scheme: dark){
+  :root:where(:not([data-theme="light"])){
+    color-scheme: dark;
+    --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --rule:#2c2c2a; --rule-2:#383835;
+    --veh:#3987e5; --yaw:#d95926; --aqua:#199e70;
+    --crit:#d03b3b; --good:#0ca30c;
+    --seq1:#1c5cab; --seq2:#2a78d6; --seq3:#5598e7; --seq4:#9ec5f4;
+    --pos:#3987e5; --neg:#d03b3b; --mid:#333331;
+    --shadow:rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+  --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+  --rule:#2c2c2a; --rule-2:#383835;
+  --veh:#3987e5; --yaw:#d95926; --aqua:#199e70;
+  --seq1:#1c5cab; --seq2:#2a78d6; --seq3:#5598e7; --seq4:#9ec5f4;
+  --pos:#3987e5; --neg:#d03b3b; --mid:#333331;
+  --shadow:rgba(0,0,0,.4);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--plane); color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+.wrap{max-width:1060px; margin:0 auto; padding:0 24px 96px}
+.prose{max-width:68ch}
+h1,h2,h3{text-wrap:balance; margin:0}
+a{color:var(--veh)}
+
+/* ---- masthead ---- */
+.mast{padding:72px 0 28px; border-bottom:1px solid var(--rule)}
+.eyebrow{
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted);
+}
+.mast h1{
+  font-size:clamp(2rem,4.4vw,3.1rem); font-weight:660; letter-spacing:-.025em;
+  line-height:1.06; margin:14px 0 0;
+}
+.mast .sub{max-width:60ch; color:var(--ink-2); font-size:1.06rem; margin:18px 0 0}
+.meta{
+  display:flex; flex-wrap:wrap; gap:0 32px; margin-top:28px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px;
+  color:var(--ink-2);
+}
+.meta b{display:block; color:var(--ink); font-size:15px; font-weight:600; font-variant-numeric:tabular-nums}
+.meta span{display:block; color:var(--muted); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase}
+
+/* ---- sections ---- */
+section{padding-top:56px}
+.sec-head{display:flex; align-items:baseline; gap:14px; border-bottom:1px solid var(--rule); padding-bottom:10px; margin-bottom:26px}
+.sec-head h2{font-size:1.32rem; font-weight:640; letter-spacing:-.015em}
+.sec-head .n{
+  font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--muted);
+  letter-spacing:.12em;
+}
+p{margin:0 0 16px}
+.lede{font-size:1.12rem; line-height:1.62}
+
+/* ---- finding panel ---- */
+.panel{
+  background:var(--surface); border:1px solid var(--rule); border-radius:4px;
+  padding:22px 24px 20px; margin:0 0 22px;
+}
+.phead{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px}
+.chip{
+  font-family:ui-monospace,Menlo,monospace; font-size:11.5px; font-weight:600;
+  background:var(--surface-2); border:1px solid var(--rule); color:var(--ink);
+  padding:2px 7px; border-radius:3px; letter-spacing:.01em;
+}
+.tag{font-family:ui-monospace,Menlo,monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); display:inline-flex; align-items:center; gap:5px}
+.tag::before{content:""; width:6px; height:6px; border-radius:50%; background:var(--muted)}
+.tag.solid::before{background:var(--good)}
+.tag.strong::before{background:var(--veh)}
+.tag.open::before{background:transparent; border:1.5px solid var(--muted)}
+.panel h3{font-size:1.06rem; font-weight:620; letter-spacing:-.01em; margin:2px 0 10px}
+.cap{font-size:13.5px; color:var(--ink-2); max-width:76ch; margin:14px 0 0}
+.cap code, p code, td code{font-family:ui-monospace,Menlo,monospace; font-size:.9em; background:var(--surface-2); padding:1px 4px; border-radius:3px}
+
+/* ---- charts ---- */
+.chart{width:100%; overflow-x:auto}
+svg{display:block; max-width:100%; height:auto}
+.grid line{stroke:var(--rule); stroke-width:1}
+.axis line, .axis path{stroke:var(--rule-2); stroke-width:1}
+.axis text{fill:var(--muted); font-family:ui-monospace,Menlo,monospace; font-size:10px}
+.alab{fill:var(--ink-2); font-family:system-ui,sans-serif; font-size:11px; letter-spacing:.04em}
+.dot{stroke:var(--surface); stroke-width:2; cursor:pointer}
+.legend{display:flex; flex-wrap:wrap; gap:6px 18px; margin:12px 0 4px; font-size:12px; color:var(--ink-2)}
+.legend i{display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+
+/* ---- tooltip ---- */
+#tip{
+  position:fixed; pointer-events:none; opacity:0; transition:opacity .1s;
+  background:var(--ink); color:var(--plane); font-family:ui-monospace,Menlo,monospace;
+  font-size:11.5px; line-height:1.5; padding:7px 9px; border-radius:4px; z-index:50;
+  box-shadow:0 4px 14px var(--shadow); white-space:pre;
+}
+
+/* ---- tables ---- */
+.tbl-wrap{overflow-x:auto; margin:8px 0 0}
+table{border-collapse:collapse; width:100%; font-size:13px}
+th,td{text-align:left; padding:7px 12px 7px 0; border-bottom:1px solid var(--rule); vertical-align:top}
+th{font-family:ui-monospace,Menlo,monospace; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:500; white-space:nowrap}
+td.num{font-family:ui-monospace,Menlo,monospace; font-variant-numeric:tabular-nums; white-space:nowrap}
+td.id{font-family:ui-monospace,Menlo,monospace; font-weight:600; white-space:nowrap}
+tr:last-child td{border-bottom:none}
+
+.note{border-left:2px solid var(--rule-2); padding-left:16px; margin:22px 0; color:var(--ink-2); font-size:14.5px; max-width:70ch}
+.note b{color:var(--ink)}
+ul{margin:0 0 16px; padding-left:20px}
+li{margin-bottom:8px}
+footer{margin-top:64px; padding-top:20px; border-top:1px solid var(--rule); color:var(--muted); font-size:12.5px}
+:focus-visible{outline:2px solid var(--veh); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">Bosch iBooster Gen1 &middot; Tesla 1037123-00-B &middot; bench capture</div>
+  <h1>What else is on the wire</h1>
+  <p class="sub">Rod position was decoded first. This is a second pass over the same six capture logs, asking what the other eleven message IDs are doing &mdash; and what any of it correlates with.</p>
+  <div class="meta">
+    <div><b>91,439</b><span>frames</span></div>
+    <div><b>14</b><span>CAN IDs</span></div>
+    <div><b>2</b><span>buses</span></div>
+    <div><b>4</b><span>power cycles</span></div>
+    <div><b>10</b><span>brake events</span></div>
+  </div>
+</header>
+
+<section>
+  <div class="sec-head"><span class="n">01</span><h2>The short answer</h2></div>
+  <div class="prose">
+    <p class="lede">There is no continuous assist, force, current or pressure channel on either bus. Every byte that moves while the pedal moves is accounted for by <em>position plus three threshold flags</em>. But the booster does emit assist-related numbers &mdash; as a burst of six messages fired roughly a second <em>after</em> each brake release, containing a summary of the application that just ended.</p>
+    <p>Two of those summary fields decode cleanly and immediately: <b>peak rod travel</b> (r = 0.9997 against the calibrated stroke signal) and <b>how long the brake was applied</b> (r = 0.9988). Both are recorded to a precision better than the bench ruler that calibrated them.</p>
+    <p>Along the way, three things that were listed as unknown or constant turned out not to be: <code>0x38E b6</code> and <code>0x38F b2</code> both carry live brake flags, <code>0x32D</code> is static identity data, and byte 0 of both YAW messages is a plain CRC-8 with no payload in it at all.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="n">02</span><h2>The continuous streams</h2></div>
+  <div class="prose">
+    <p>Across a full pedal sweep, exactly six fields on the two buses are non-constant. Three of them are position, and three are flags derived from position.</p>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Field</th><th>Bus</th><th>Rate</th><th>What it is</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td class="id">0x39D b2:b3</td><td>vehicle</td><td class="num">25 Hz</td><td>Rod travel, uint16 LE, 320.7 counts/mm</td><td>known</td></tr>
+        <tr><td class="id">0x38E b3 + b4&amp;0x0F</td><td>YAW</td><td class="num">100 Hz</td><td>Rod travel, 12-bit, 65.8 counts/mm</td><td>known</td></tr>
+        <tr><td class="id">0x38E b4&gt;&gt;4</td><td>YAW</td><td class="num">100 Hz</td><td>Status: 0 init / 1 healthy / 2 fault</td><td>known</td></tr>
+        <tr><td class="id">0x38E b6</td><td>YAW</td><td class="num">100 Hz</td><td><b>Brake flag &mdash; on at 2.3 mm, off at 1.74 mm</b></td><td>new</td></tr>
+        <tr><td class="id">0x38F b2 bit0</td><td>YAW</td><td class="num">50 Hz</td><td><b>Second brake flag, lower threshold ~1.5 mm</b></td><td>new</td></tr>
+        <tr><td class="id">0x38F b2 bits 5:3</td><td>YAW</td><td class="num">50 Hz</td><td><b>Travel state &mdash; a third threshold at ~40 mm</b></td><td>new</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel" style="margin-top:26px">
+    <div class="phead"><span class="chip">0x39D &middot; 0x38E &middot; 0x38F</span><span class="tag solid">Confirmed &middot; 4 runs</span></div>
+    <h3>One pedal sweep, all three flags underneath it</h3>
+    <div class="chart" id="c-trace"></div>
+    <p class="cap">Two brake applications from <code>assist-idx0/1.log</code>. The trace is <code>0x39D</code> converted to millimetres; the lanes below are the raw flag states. <code>0x38F</code>'s brake bit trips first, <code>0x38E b6</code> a fraction of a millimetre later, and near the end of travel <code>0x38F b2</code> switches to a third value entirely.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">threshold map</span><span class="tag solid">Confirmed &middot; 4 runs</span></div>
+    <h3>Three switch points, each with real hysteresis</h3>
+    <div class="chart" id="c-thresh"></div>
+    <p class="cap">Every transition observed across all four power cycles. <b>The two panels are separate zoom windows on the same travel axis</b> &mdash; the interesting detail is sub-millimetre, and it would be invisible on a 45 mm scale. The spread inside each marker is run-to-run variation, not sensor noise. Release edges on <code>0x38F</code> are sampled at 50 Hz during a fast pedal return, which is why its off-threshold is the one number here that is rate-limited rather than measured.</p>
+  </div>
+
+  <div class="note">
+    <b>Why this matters for the 944.</b> A brake-light signal already exists on the bus, twice, with hysteresis built in &mdash; which makes it a genuine candidate to cross-check the mechanical pedal switch against, even though the standing rule keeps the lights on the mechanical switch. The ~40 mm state is more interesting still: it flags the last few millimetres before the end stop.
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="n">03</span><h2>The post-brake burst</h2></div>
+  <div class="prose">
+    <p>Six IDs &mdash; <code>0x33D 0x31D 0x34D 0x36D 0x37D 0x38D</code> &mdash; transmit one frame each, together, within about 120 ms of one another. The bench log had them down as an unexplained group with an unknown trigger. They are not unexplained: <b>every burst in every log follows a brake release by 0.6&ndash;2.2 seconds</b>, and no burst occurs without one.</p>
+    <p>That gives ten bursts paired with ten brake applications whose peak, duration, and shape are known independently from <code>0x39D</code>. Correlating every byte of the burst against every property of the application that triggered it is what the rest of this page does.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">event fields &times; application properties</span><span class="tag strong">n = 10</span></div>
+    <h3>What tracks what</h3>
+    <div class="chart" id="c-heat"></div>
+    <p class="cap">Pearson r between each burst byte and each measured property of the preceding pedal application. Uptime is included as a control &mdash; a field that only tracks uptime is a counter or a drift, not a measurement of the brake event. Known free-running counters (<code>0x31D</code>/<code>0x3AD b0:b1</code>) are excluded. With n = 10 and this many candidates, treat everything below |r| &asymp; 0.9 as a lead rather than a result.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x38D b5:b6</span><span class="tag strong">r = 0.9997 &middot; p &lt; 0.0001</span></div>
+    <h3>Peak rod travel of the application just ended</h3>
+    <div class="chart" id="c-peak"></div>
+    <p class="cap">129.8 counts per millimetre. Residuals are within &plusmn;0.8 mm across a 33 mm range &mdash; and the ruler that produced the reference calibration is itself only good to about &plusmn;2 mm, so this field agrees with <code>0x39D</code> as closely as the calibration allows. Note the four points stacked at 42.4 mm: those are the mechanical end stop, hit repeatedly across three separate power cycles, and the recorded value repeats to within 8 counts.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x37D b0:b1</span><span class="tag strong">r = 0.9988 &middot; p &lt; 0.0001</span></div>
+    <h3>How long the brake was held</h3>
+    <div class="chart" id="c-dur"></div>
+    <p class="cap">A 16-bit tick count, linear in application duration over a 0.8 s to 49 s range, at 27.5 ticks per second. That rate is not a round number, which means either the tick is ~36 ms or the booster's own start/stop threshold differs slightly from the 600-count threshold used here &mdash; fitting against thresholds from 400 to 1000 counts moves the slope by less than 0.2%, so the threshold is low and the tick is the open question.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x31D b2 high nibble</span><span class="tag strong">r = 0.884 &middot; p &lt; 0.0001</span></div>
+    <h3>The same duration, bucketed on a log scale</h3>
+    <div class="chart" id="c-bucket"></div>
+    <p class="cap">A 4-bit field taking values 1&ndash;7, monotonic in duration with roughly one step per doubling. A logarithmic bucket index is what diagnostic event memory looks like, not what a control signal looks like &mdash; which is a strong hint about what this whole burst is for. Bucket edges cannot be pinned down from ten events.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x33D b4:b7</span><span class="tag open">Unresolved</span></div>
+    <h3>Four channels of something, tightly clustered</h3>
+    <div class="chart" id="c-quad"></div>
+    <p class="cap">All four panels share one vertical scale. These are four bytes that always sit within a few counts of each other, in the range 76&ndash;90, all drifting upward with peak travel (r = 0.53 to 0.92) but far too compressed to be a position. Four near-identical channels of one quantity is the shape of a redundant sensor set or a set of sampled supply readings. Distinguishing those needs a run with the bench supply deliberately varied &mdash; nothing in these captures separates them.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="n">04</span><h2>Three corrections to the existing decode</h2></div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x38E b0 &middot; 0x38F b0</span><span class="tag solid">Confirmed &middot; 70,438 frames</span></div>
+    <h3>Byte 0 is a CRC-8, and contains no data</h3>
+    <p class="cap" style="margin-top:2px">Both YAW messages protect bytes 1&ndash;7 with <b>CRC-8/SAE-J1850</b> &mdash; polynomial <code>0x1D</code>, init <code>0x00</code>, final XOR <code>0x0A</code>, no reflection. It validates on 100% of 46,960 <code>0x38E</code> frames and 23,478 <code>0x38F</code> frames across four power cycles, with the same parameters for both IDs &mdash; so the CRC is not seeded from the message ID. This closes the question of whether anything was hiding in a byte that looked random. Nothing was. The vehicle bus does not share the scheme: <code>0x39D</code> keeps its additive <code>(b1+b2+b3+0xA0)</code> checksum, and none of the burst IDs carry a checksum at all, which is why their byte 0 is free to be data.</p>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x32D</span><span class="tag solid">Confirmed &middot; 4 power cycles</span></div>
+    <h3>Static identity data, multiplexed on byte 0</h3>
+    <p class="cap" style="margin-top:2px">Not "structured; identity or config?" &mdash; settled. Five frames cycle on a 2-second rotation, selected by <code>b0</code> &isin; {<code>0A 0B 0D 14 16</code>}, and each one is <b>byte-for-byte identical across all four independent power cycles</b>. Nothing in it responds to the pedal. It is a part number, a calibration ID, or similar, and a monitor can read it once at boot and ignore the message thereafter.</p>
+    <div class="tbl-wrap" style="margin-top:14px">
+      <table>
+        <thead><tr><th>mux</th><th>payload b1&ndash;b7</th></tr></thead>
+        <tbody>
+          <tr><td class="id">0x0A</td><td class="num">01 00 00 00 00 70 00</td></tr>
+          <tr><td class="id">0x0B</td><td class="num">00 02 01 01 00 00 00</td></tr>
+          <tr><td class="id">0x0D</td><td class="num">00 00 00 8D 79 20 21</td></tr>
+          <tr><td class="id">0x14</td><td class="num">05 00 00 60 FC B0 70</td></tr>
+          <tr><td class="id">0x16</td><td class="num">00 00 00 E4 AC A3 2F</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="phead"><span class="chip">0x31D b0:b1 &middot; 0x3AD b0:b1</span><span class="tag solid">Confirmed &middot; 4 runs</span></div>
+    <h3>A shared uptime counter &mdash; and a correlation trap</h3>
+    <p class="cap" style="margin-top:2px">A 16-bit little-endian counter running at <b>9.99 ticks per second</b> &mdash; a 100 ms tick &mdash; measured across four runs including one where the capture started long after the booster was powered. Both IDs carry the same counter, offset only by their position in the burst. It matters because it correlates with almost everything: later events in a run had longer, deeper pedal applications, so an uptime counter fakes a relationship with peak, duration and work done. It was excluded from the matrix above for that reason, and it is the reason uptime is plotted there as a control column.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="n">05</span><h2>The ten events, raw</h2></div>
+  <div class="prose"><p>Every paired burst, sorted by peak travel. This is the whole evidence base for section 03 &mdash; ten rows is not many, and the table is here so the fits above can be checked by eye.</p></div>
+  <div class="tbl-wrap" id="c-table"></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="n">06</span><h2>What to capture next</h2></div>
+  <div class="prose">
+    <p>Everything above came from logs recorded for a different purpose &mdash; pedal sweeps for calibration. Three of the open questions would close with one deliberate session:</p>
+    <ul>
+      <li><b>Many short, varied brake applications.</b> Twenty or thirty events instead of ten &mdash; varying depth, speed and hold time independently &mdash; would separate the burst fields that track peak from those that track rate or work done. Right now peak and duration are partly confounded because a deep application was usually also a long one.</li>
+      <li><b>A supply-voltage sweep.</b> Run the bench supply from 11 V to 14 V while braking identically. If <code>0x33D b4:b7</code> moves with voltage, those four channels are settled in one test.</li>
+      <li><b>A soak.</b> Leave it powered and idle for twenty minutes. <code>0x34D b5</code> steps 0x26 &rarr; 0x28 &rarr; 0x2A monotonically with uptime across these runs, which is what a slowly warming temperature looks like &mdash; but uptime and cumulative braking are confounded in every log here, and a soak with no pedal input separates them completely.</li>
+    </ul>
+    <p>None of it changes the monitor design. The signals worth putting on the dash &mdash; position, status, and now a brake flag and an end-of-travel flag &mdash; are all continuous, all confirmed, and all on the 100 Hz YAW bus.</p>
+  </div>
+</section>
+
+<footer>
+  Analysis over <span class="mono">logs/*.log</span> in <span class="mono">pelosim/tesla-ibooster-can</span> &mdash; cal, cal2, assist, stroke-sweep-1, busA/busB and first-ack-baseline. Read-only capture throughout; nothing was transmitted to the booster. Correlation significance from a 20,000-iteration permutation test.
+</footer>
+
+</div>
+
+<script>
+const DATA = {"pos38E":[[0.0,320,0],[0.02,320,0],[0.04,320,0],[0.06,320,0],[0.08,320,0],[0.1,320,0],[0.12,320,0],[0.14,320,0],[0.16,320,0],[0.18,320,0],[0.2,320,0],[0.22,320,0],[0.24,320,0],[0.26,320,0],[0.28,320,0],[0.3,320,0],[0.32,320,0],[0.34,320,0],[0.36,320,0],[0.38,320,0],[0.4,320,0],[0.42,320,0],[0.44,320,0],[0.46,320,0],[0.48,320,0],[0.5,320,0],[0.52,320,0],[0.54,320,0],[0.56,320,0],[0.58,320,0],[0.6,320,0],[0.62,320,0],[0.64,320,0],[0.66,320,0],[0.68,320,0],[0.7,320,0],[0.72,320,0],[0.74,320,0],[0.76,320,0],[0.78,320,0],[0.8,320,0],[0.82,320,0],[0.84,320,0],[0.86,320,0],[0.88,320,0],[0.9,320,0],[0.92,320,0],[0.94,320,0],[0.96,320,0],[0.98,320,0],[1.0,320,0],[1.02,320,0],[1.04,320,0],[1.06,320,0],[1.08,320,0],[1.1,320,0],[1.12,320,0],[1.14,320,0],[1.16,320,0],[1.18,320,0],[1.2,320,0],[1.22,320,0],[1.24,320,0],[1.26,320,0],[1.28,320,0],[1.3,320,0],[1.32,320,0],[1.34,320,0],[1.36,320,0],[1.38,320,0],[1.4,320,0],[1.42,320,0],[1.44,320,0],[1.46,320,0],[1.48,320,0],[1.5,320,0],[1.52,320,0],[1.54,320,0],[1.56,320,0],[1.58,320,0],[1.6,320,0],[1.62,320,0],[1.64,320,0],[1.66,320,0],[1.68,320,0],[1.7,320,0],[1.72,320,0],[1.74,320,0],[1.76,320,0],[1.78,320,0],[1.8,320,0],[1.82,320,0],[1.84,320,0],[1.86,320,0],[1.88,320,0],[1.9,320,0],[1.92,320,0],[1.94,320,0],[1.96,320,0],[1.98,320,0],[2.0,320,0],[2.02,320,0],[2.04,320,0],[2.06,320,0],[2.08,320,0],[2.1,320,0],[2.12,320,0],[2.14,320,0],[2.16,320,0],[2.18,320,0],[2.2,320,0],[2.22,320,0],[2.24,320,0],[2.26,320,0],[2.28,320,0],[2.3,320,0],[2.32,320,0],[2.34,320,0],[2.36,320,0],[2.38,320,0],[2.4,320,0],[2.42,320,0],[2.44,320,0],[2.46,320,0],[2.48,320,0],[2.5,320,0],[2.52,320,0],[2.54,320,0],[2.56,320,0],[2.58,320,0],[2.6,320,0],[2.62,320,0],[2.64,320,0],[2.66,320,0],[2.68,320,0],[2.7,320,0],[2.72,320,0],[2.74,320,0],[2.76,320,0],[2.78,320,0],[2.8,320,0],[2.82,320,0],[2.84,320,0],[2.86,320,0],[2.88,320,0],[2.9,320,0],[2.92,320,0],[2.94,346,0],[2.96,348,0],[2.981,367,0],[3.0,388,0],[3.021,405,0],[3.041,416,0],[3.061,430,1],[3.08,454,1],[3.1,490,1],[3.12,531,1],[3.14,567,1],[3.161,608,1],[3.18,643,1],[3.2,673,1],[3.221,701,1],[3.241,727,1],[3.26,753,1],[3.28,780,1],[3.3,809,1],[3.32,839,1],[3.34,874,1],[3.361,914,1],[3.38,959,1],[3.401,1010,1],[3.421,1061,1],[3.441,1117,1],[3.461,1176,1],[3.481,1238,1],[3.501,1296,1],[3.521,1352,1],[3.541,1406,1],[3.56,1456,1],[3.58,1503,1],[3.601,1548,1],[3.62,1592,1],[3.64,1627,1],[3.66,1665,1],[3.68,1703,1],[3.701,1740,1],[3.721,1776,1],[3.74,1812,1],[3.76,1845,1],[3.78,1871,1],[3.8,1894,1],[3.82,1916,1],[3.841,1936,1],[3.86,1959,1],[3.88,1982,1],[3.9,2008,1],[3.921,2035,1],[3.94,2063,1],[3.96,2091,1],[3.981,2120,1],[4.0,2147,1],[4.021,2172,1],[4.04,2199,1],[4.06,2226,1],[4.081,2250,1],[4.101,2273,1],[4.12,2296,1],[4.14,2317,1],[4.16,2335,1],[4.18,2352,1],[4.2,2363,1],[4.22,2372,1],[4.24,2379,1],[4.26,2384,1],[4.28,2389,1],[4.3,2395,1],[4.32,2400,1],[4.341,2410,1],[4.361,2420,1],[4.38,2432,1],[4.401,2446,1],[4.42,2466,1],[4.44,2487,1],[4.461,2504,1],[4.481,2518,1],[4.5,2531,1],[4.521,2541,1],[4.54,2551,1],[4.561,2560,1],[4.58,2570,1],[4.6,2582,1],[4.62,2593,1],[4.64,2606,1],[4.66,2620,1],[4.68,2638,1],[4.701,2655,1],[4.721,2673,1],[4.741,2690,1],[4.76,2706,1],[4.781,2718,1],[4.8,2727,1],[4.82,2735,1],[4.84,2744,1],[4.86,2751,1],[4.881,2760,1],[4.901,2770,1],[4.92,2780,1],[4.941,2789,1],[4.961,2799,1],[4.98,2813,1],[5.0,2826,1],[5.02,2840,1],[5.041,2856,1],[5.06,2876,1],[5.081,2897,1],[5.1,2918,1],[5.12,2937,1],[5.14,2960,1],[5.16,2983,1],[5.18,3004,1],[5.201,3027,1],[5.221,3041,1],[5.241,3030,1],[5.261,3022,1],[5.281,3040,1],[5.3,3045,1],[5.321,3030,1],[5.341,3015,1],[5.36,3047,1],[5.38,3044,1],[5.4,3031,1],[5.421,3033,1],[5.441,3068,1],[5.461,3034,1],[5.481,3000,1],[5.5,2990,1],[5.521,2981,1],[5.54,2951,1],[5.561,2903,1],[5.581,2847,1],[5.601,2785,1],[5.621,2717,1],[5.641,2644,1],[5.66,2567,1],[5.68,2489,1],[5.701,2415,1],[5.72,2343,1],[5.741,2271,1],[5.761,2200,1],[5.78,2127,1],[5.801,2051,1],[5.821,1974,1],[5.84,1897,1],[5.86,1820,1],[5.88,1744,1],[5.9,1668,1],[5.921,1592,1],[5.94,1516,1],[5.96,1439,1],[5.98,1363,1],[6.0,1286,1],[6.02,1209,1],[6.04,1132,1],[6.061,1056,1],[6.08,981,1],[6.1,907,1],[6.12,835,1],[6.141,768,1],[6.16,707,1],[6.18,653,1],[6.2,606,1],[6.22,572,1],[6.24,548,1],[6.26,535,1],[6.281,528,1],[6.3,523,1],[6.32,517,1],[6.34,509,1],[6.36,500,1],[6.38,492,1],[6.4,485,1],[6.421,478,1],[6.44,470,1],[6.46,462,1],[6.48,454,1],[6.5,444,1],[6.597,432,1],[6.6,421,1],[6.6,409,1],[6.601,399,1],[6.602,390,1],[6.629,383,0],[6.64,377,0],[6.66,373,0],[6.68,369,0],[6.7,365,0],[6.721,360,0],[6.74,320,0],[6.76,320,0],[6.78,320,0],[6.8,320,0],[6.82,320,0],[6.84,320,0],[6.86,320,0],[6.88,320,0],[6.9,320,0],[6.92,320,0],[6.94,320,0],[6.96,320,0],[6.98,320,0],[7.0,320,0],[7.02,320,0],[7.04,320,0],[7.06,320,0],[7.08,320,0],[7.1,320,0],[7.12,320,0],[7.14,320,0],[7.16,320,0],[7.18,320,0],[7.2,320,0],[7.22,320,0],[7.24,320,0],[7.26,320,0],[7.28,320,0],[7.3,320,0],[7.32,320,0],[7.34,320,0],[7.36,320,0],[7.38,320,0],[7.4,320,0],[7.421,320,0],[7.44,320,0],[7.46,320,0],[7.48,320,0],[7.5,320,0],[7.52,320,0],[7.54,320,0],[7.56,320,0],[7.58,320,0],[7.601,320,0],[7.62,320,0],[7.64,320,0],[7.66,320,0],[7.68,320,0],[7.7,320,0],[7.72,320,0],[7.74,320,0],[7.76,320,0],[7.78,320,0],[7.8,320,0],[7.82,320,0],[7.84,320,0],[7.86,320,0],[7.88,320,0],[7.9,320,0],[7.92,320,0],[7.94,320,0],[7.96,320,0],[7.98,320,0],[8.0,320,0],[8.02,320,0],[8.04,320,0],[8.06,320,0],[8.08,320,0],[8.1,320,0],[8.12,320,0],[8.14,320,0],[8.16,320,0],[8.18,320,0],[8.2,320,0],[8.22,320,0],[8.24,320,0],[8.26,320,0],[8.28,320,0],[8.3,320,0],[8.32,320,0],[8.34,320,0],[8.36,320,0],[8.38,320,0],[8.4,320,0],[8.42,320,0],[8.44,320,0],[8.46,320,0],[8.48,320,0],[8.5,320,0],[8.52,320,0],[8.54,320,0],[8.56,320,0],[8.58,320,0],[8.6,320,0],[8.62,320,0],[8.64,320,0],[8.66,320,0],[8.68,320,0],[8.7,320,0],[8.72,320,0],[8.74,320,0],[8.76,320,0],[8.78,320,0],[8.8,320,0],[8.82,320,0],[8.84,320,0],[8.86,320,0],[8.88,345,0],[8.9,348,0],[8.92,362,0],[8.94,376,0],[8.961,385,0],[8.98,390,0],[9.001,398,0],[9.02,407,0],[9.041,415,1],[9.06,425,1],[9.081,435,1],[9.1,447,1],[9.121,459,1],[9.14,473,1],[9.16,488,1],[9.18,504,1],[9.2,521,1],[9.22,535,1],[9.241,545,1],[9.261,554,1],[9.28,555,1],[9.301,555,1],[9.32,555,1],[9.341,558,1],[9.361,566,1],[9.38,572,1],[9.4,583,1],[9.421,596,1],[9.44,610,1],[9.461,625,1],[9.48,637,1],[9.501,648,1],[9.52,657,1],[9.54,663,1],[9.561,667,1],[9.58,670,1],[9.6,671,1],[9.62,673,1],[9.641,675,1],[9.66,677,1],[9.68,679,1],[9.7,687,1],[9.721,693,1],[9.74,702,1],[9.76,711,1],[9.78,720,1],[9.801,730,1],[9.82,741,1],[9.84,752,1],[9.861,764,1],[9.88,777,1],[9.901,790,1],[9.92,806,1],[9.941,822,1],[9.96,841,1],[9.98,861,1],[10.0,885,1],[10.02,911,1],[10.04,942,1],[10.061,975,1],[10.08,1006,1],[10.101,1040,1],[10.12,1074,1],[10.14,1109,1],[10.16,1141,1],[10.18,1174,1],[10.2,1206,1],[10.22,1238,1],[10.24,1273,1],[10.26,1306,1],[10.281,1341,1],[10.301,1375,1],[10.321,1410,1],[10.341,1442,1],[10.361,1473,1],[10.381,1503,1],[10.401,1533,1],[10.421,1561,1],[10.441,1589,1],[10.461,1613,1],[10.481,1628,1],[10.501,1639,1],[10.521,1640,1],[10.541,1641,1],[10.561,1641,1],[10.581,1641,1],[10.601,1642,1],[10.62,1642,1],[10.64,1643,1],[10.66,1643,1],[10.681,1644,1],[10.701,1649,1],[10.721,1655,1],[10.74,1663,1],[10.761,1668,1],[10.781,1673,1],[10.801,1678,1],[10.82,1681,1],[10.841,1686,1],[10.861,1690,1],[10.881,1693,1],[10.901,1695,1],[10.921,1698,1],[10.941,1701,1],[10.961,1705,1],[10.981,1708,1],[11.001,1713,1],[11.021,1719,1],[11.041,1724,1],[11.061,1732,1],[11.081,1740,1],[11.1,1748,1],[11.121,1757,1],[11.141,1765,1],[11.161,1775,1],[11.18,1785,1],[11.201,1795,1],[11.221,1805,1],[11.241,1816,1],[11.261,1826,1],[11.281,1837,1],[11.301,1849,1],[11.321,1865,1],[11.341,1880,1],[11.361,1897,1],[11.38,1915,1],[11.401,1933,1],[11.42,1955,1],[11.441,1975,1],[11.46,1995,1],[11.48,2016,1],[11.5,2039,1],[11.521,2061,1],[11.541,2086,1],[11.561,2112,1],[11.581,2139,1],[11.6,2168,1],[11.621,2197,1],[11.64,2226,1],[11.661,2252,1],[11.68,2280,1],[11.7,2306,1],[11.721,2330,1],[11.74,2352,1],[11.761,2375,1],[11.781,2397,1],[11.8,2419,1],[11.821,2438,1],[11.841,2458,1],[11.861,2477,1],[11.881,2495,1],[11.901,2512,1],[11.921,2529,1],[11.941,2545,1],[11.96,2560,1],[11.981,2576,1],[12.001,2591,1],[12.021,2606,1],[12.041,2621,1],[12.061,2636,1],[12.08,2651,1],[12.101,2666,1],[12.121,2681,1],[12.141,2696,1],[12.161,2711,1],[12.18,2725,1],[12.2,2739,1],[12.221,2753,1],[12.241,2765,1],[12.261,2777,1],[12.281,2788,1],[12.301,2799,1],[12.321,2809,1],[12.341,2820,1],[12.36,2831,1],[12.381,2841,1],[12.4,2853,1],[12.42,2863,1],[12.441,2875,1],[12.46,2887,1],[12.48,2901,1],[12.5,2915,1],[12.521,2926,1],[12.541,2939,1],[12.561,2952,1],[12.581,2962,1],[12.6,2973,1],[12.62,2985,1],[12.641,2996,1],[12.66,3010,1],[12.681,3024,1],[12.701,3031,1],[12.721,3030,1],[12.741,3028,1],[12.761,3022,1],[12.781,3035,1],[12.8,3035,1],[12.821,3028,1],[12.841,3017,1],[12.861,3011,1],[12.881,3007,1],[12.9,3003,1],[12.921,2999,1],[12.941,2996,1],[12.961,2994,1],[12.981,2993,1],[13.0,2991,1],[13.021,2990,1],[13.041,2989,1],[13.06,2989,1],[13.08,2988,1],[13.1,2988,1],[13.121,2987,1],[13.141,2986,1],[13.161,2983,1],[13.181,2979,1],[13.201,2973,1],[13.221,2967,1],[13.241,2959,1],[13.261,2952,1],[13.281,2945,1],[13.301,2937,1],[13.321,2929,1],[13.341,2919,1],[13.36,2910,1],[13.381,2899,1],[13.401,2887,1],[13.421,2873,1],[13.441,2858,1],[13.46,2841,1],[13.48,2822,1],[13.501,2802,1],[13.521,2781,1],[13.541,2759,1],[13.561,2739,1],[13.581,2719,1],[13.601,2700,1],[13.621,2681,1],[13.641,2662,1],[13.661,2644,1],[13.681,2626,1],[13.701,2608,1],[13.721,2590,1],[13.741,2573,1],[13.761,2556,1],[13.781,2538,1],[13.801,2521,1],[13.821,2504,1],[13.841,2487,1],[13.861,2472,1],[13.881,2458,1],[13.9,2445,1],[13.921,2432,1],[13.941,2418,1],[13.96,2405,1],[13.981,2392,1],[14.001,2379,1],[14.021,2365,1],[14.041,2352,1],[14.061,2338,1],[14.08,2324,1],[14.101,2310,1],[14.121,2296,1],[14.141,2281,1],[14.161,2267,1],[14.18,2253,1],[14.201,2238,1],[14.221,2224,1],[14.241,2210,1],[14.261,2195,1],[14.281,2180,1],[14.301,2164,1],[14.321,2146,1],[14.341,2127,1],[14.361,2107,1],[14.381,2086,1],[14.401,2062,1],[14.421,2037,1],[14.441,2008,1],[14.461,1979,1],[14.481,1949,1],[14.501,1918,1],[14.521,1888,1],[14.541,1862,1],[14.561,1841,1],[14.581,1825,1],[14.601,1817,1],[14.621,1809,1],[14.641,1803,1],[14.66,1797,1],[14.68,1790,1],[14.7,1782,1],[14.721,1775,1],[14.741,1768,1],[14.76,1761,1],[14.78,1754,1],[14.801,1747,1],[14.82,1739,1],[14.841,1732,1],[14.86,1724,1],[14.881,1717,1],[14.9,1709,1],[14.92,1701,1],[14.941,1694,1],[14.961,1685,1],[14.981,1677,1],[15.001,1670,1],[15.021,1661,1],[15.041,1654,1],[15.061,1645,1],[15.081,1638,1],[15.101,1630,1],[15.121,1621,1],[15.14,1613,1],[15.161,1604,1],[15.181,1596,1],[15.201,1587,1],[15.221,1579,1],[15.241,1571,1],[15.261,1562,1],[15.281,1554,1],[15.301,1546,1],[15.321,1538,1],[15.341,1530,1],[15.361,1522,1],[15.381,1516,1],[15.401,1508,1],[15.421,1501,1],[15.441,1494,1],[15.461,1486,1],[15.481,1479,1],[15.501,1472,1],[15.521,1464,1],[15.541,1457,1],[15.561,1448,1],[15.581,1441,1],[15.601,1432,1],[15.621,1423,1],[15.641,1415,1],[15.661,1405,1],[15.681,1396,1],[15.701,1386,1],[15.721,1376,1],[15.741,1365,1],[15.761,1353,1],[15.781,1341,1],[15.801,1328,1],[15.82,1314,1],[15.841,1299,1],[15.861,1283,1],[15.881,1266,1],[15.901,1248,1],[15.921,1228,1],[15.941,1206,1],[15.961,1183,1],[15.98,1158,1],[16.001,1130,1],[16.021,1100,1],[16.04,1068,1],[16.061,1035,1],[16.08,1002,1],[16.101,970,1],[16.121,939,1],[16.14,907,1],[16.161,877,1],[16.181,847,1],[16.201,818,1],[16.221,794,1],[16.241,773,1],[16.261,753,1],[16.281,732,1],[16.301,713,1],[16.321,692,1],[16.341,673,1],[16.361,653,1],[16.38,637,1],[16.401,623,1],[16.421,611,1],[16.441,601,1],[16.461,592,1],[16.481,585,1],[16.501,577,1],[16.521,568,1],[16.541,560,1],[16.561,550,1],[16.58,541,1],[16.601,532,1],[16.621,525,1],[16.641,519,1],[16.66,512,1],[16.68,505,1],[16.701,499,1],[16.721,492,1],[16.74,483,1],[16.76,474,1],[16.781,463,1],[16.801,452,1],[16.821,439,1],[16.84,425,1],[16.86,412,1],[16.88,401,1],[16.901,391,1],[16.921,382,0],[16.941,376,0],[16.96,372,0],[16.981,369,0],[17.001,365,0],[17.021,361,0],[17.041,357,0],[17.061,353,0],[17.081,349,0],[17.101,345,0],[17.121,343,0],[17.141,343,0],[17.161,343,0],[17.18,320,0],[17.201,320,0],[17.221,320,0],[17.241,320,0],[17.26,320,0],[17.281,320,0],[17.301,320,0],[17.321,320,0],[17.34,320,0],[17.36,320,0],[17.38,320,0],[17.4,320,0],[17.42,320,0],[17.44,320,0],[17.461,320,0],[17.481,320,0],[17.5,320,0],[17.52,320,0],[17.54,320,0],[17.56,320,0],[17.581,320,0],[17.6,320,0],[17.62,320,0],[17.641,320,0],[17.66,320,0],[17.68,320,0],[17.7,320,0],[17.721,320,0],[17.741,320,0],[17.761,320,0],[17.78,320,0],[17.8,320,0],[17.82,320,0],[17.84,320,0],[17.861,320,0],[17.88,320,0],[17.9,320,0],[17.921,320,0],[17.94,320,0],[17.96,320,0],[17.98,320,0],[18.0,320,0],[18.021,320,0],[18.041,320,0],[18.06,320,0],[18.081,320,0],[18.1,320,0],[18.121,320,0],[18.14,320,0],[18.161,320,0],[18.18,320,0],[18.2,320,0],[18.221,320,0],[18.24,320,0],[18.26,320,0],[18.28,320,0],[18.3,320,0],[18.321,320,0],[18.34,320,0],[18.36,320,0],[18.38,320,0],[18.401,320,0],[18.42,320,0],[18.44,320,0],[18.46,320,0],[18.48,320,0],[18.5,320,0],[18.52,320,0],[18.54,320,0],[18.56,320,0],[18.58,320,0],[18.6,320,0],[18.62,320,0],[18.64,320,0],[18.66,320,0],[18.68,320,0],[18.7,320,0],[18.72,320,0],[18.74,320,0],[18.76,320,0],[18.78,320,0],[18.8,320,0],[18.82,320,0],[18.84,320,0],[18.86,320,0],[18.88,320,0],[18.9,320,0],[18.92,320,0],[18.94,320,0],[18.96,320,0],[18.98,320,0],[19.0,320,0],[19.02,320,0],[19.04,320,0],[19.06,320,0],[19.08,320,0],[19.1,320,0],[19.121,320,0],[19.141,320,0],[19.161,320,0],[19.181,320,0],[19.2,320,0],[19.22,320,0],[19.24,320,0],[19.26,320,0],[19.28,320,0],[19.3,320,0],[19.32,320,0],[19.34,320,0],[19.36,320,0],[19.38,320,0],[19.401,320,0],[19.42,320,0],[19.441,320,0],[19.461,320,0],[19.48,320,0],[19.5,320,0],[19.521,320,0],[19.54,320,0],[19.561,320,0],[19.581,320,0],[19.6,320,0],[19.62,320,0],[19.641,320,0],[19.661,320,0],[19.681,320,0],[19.7,320,0],[19.721,320,0],[19.741,320,0],[19.761,320,0],[19.78,320,0],[19.8,320,0],[19.821,320,0],[19.841,320,0],[19.861,320,0],[19.881,320,0],[19.901,320,0],[19.921,320,0],[19.941,320,0],[19.961,320,0],[19.981,320,0]],"state38F":[[0.02,226],[0.04,226],[0.06,226],[0.08,226],[0.1,226],[0.12,226],[0.14,226],[0.16,226],[0.18,226],[0.2,226],[0.22,226],[0.24,226],[0.26,226],[0.28,226],[0.3,226],[0.32,226],[0.34,226],[0.36,226],[0.38,226],[0.4,226],[0.42,226],[0.44,226],[0.46,226],[0.48,226],[0.5,226],[0.52,226],[0.54,226],[0.56,226],[0.58,226],[0.6,226],[0.62,226],[0.64,226],[0.66,226],[0.68,226],[0.7,226],[0.72,226],[0.74,226],[0.76,226],[0.78,226],[0.8,226],[0.82,226],[0.84,226],[0.86,226],[0.88,226],[0.9,226],[0.92,226],[0.94,226],[0.96,226],[0.98,226],[1.0,226],[1.02,226],[1.04,226],[1.06,226],[1.08,226],[1.1,226],[1.12,226],[1.14,226],[1.16,226],[1.18,226],[1.2,226],[1.22,226],[1.24,226],[1.26,226],[1.28,226],[1.3,226],[1.32,226],[1.34,226],[1.36,226],[1.38,226],[1.4,226],[1.42,226],[1.44,226],[1.46,226],[1.48,226],[1.5,226],[1.52,226],[1.54,226],[1.56,226],[1.58,226],[1.6,226],[1.62,226],[1.64,226],[1.66,226],[1.68,226],[1.7,226],[1.72,226],[1.74,226],[1.76,226],[1.78,226],[1.8,226],[1.82,226],[1.84,226],[1.86,226],[1.88,226],[1.9,226],[1.92,226],[1.94,226],[1.96,226],[1.98,226],[2.0,226],[2.02,226],[2.04,226],[2.06,226],[2.08,226],[2.1,226],[2.12,226],[2.14,226],[2.16,226],[2.18,226],[2.2,226],[2.22,226],[2.24,226],[2.26,226],[2.28,226],[2.3,226],[2.32,226],[2.34,226],[2.36,226],[2.38,226],[2.4,226],[2.42,226],[2.44,226],[2.46,226],[2.48,226],[2.5,226],[2.52,226],[2.54,226],[2.56,226],[2.58,226],[2.6,226],[2.62,226],[2.64,226],[2.66,226],[2.68,226],[2.7,226],[2.72,226],[2.74,226],[2.76,226],[2.78,226],[2.8,226],[2.82,226],[2.84,226],[2.86,226],[2.88,226],[2.9,226],[2.92,226],[2.94,226],[2.96,226],[2.98,226],[3.0,227],[3.02,227],[3.04,227],[3.06,227],[3.08,227],[3.1,227],[3.12,227],[3.14,227],[3.16,227],[3.18,227],[3.2,227],[3.22,227],[3.24,227],[3.26,227],[3.28,227],[3.3,227],[3.32,227],[3.34,227],[3.36,227],[3.38,227],[3.401,227],[3.42,227],[3.44,227],[3.46,227],[3.48,227],[3.5,227],[3.52,227],[3.54,227],[3.56,227],[3.58,227],[3.6,227],[3.62,227],[3.64,227],[3.66,227],[3.68,227],[3.7,227],[3.72,227],[3.74,227],[3.76,227],[3.78,227],[3.8,227],[3.82,227],[3.84,227],[3.86,227],[3.88,227],[3.9,227],[3.921,227],[3.94,227],[3.96,227],[3.98,227],[4.0,227],[4.02,227],[4.04,227],[4.06,227],[4.08,227],[4.1,227],[4.12,227],[4.14,227],[4.16,227],[4.18,227],[4.2,227],[4.22,227],[4.24,227],[4.26,227],[4.28,227],[4.3,227],[4.32,227],[4.34,227],[4.36,227],[4.38,227],[4.4,227],[4.42,227],[4.44,227],[4.46,227],[4.48,227],[4.5,227],[4.52,227],[4.54,227],[4.56,227],[4.58,227],[4.6,227],[4.62,227],[4.64,227],[4.66,227],[4.68,227],[4.7,227],[4.72,227],[4.74,227],[4.76,227],[4.78,227],[4.8,227],[4.82,227],[4.84,227],[4.86,227],[4.88,227],[4.9,227],[4.92,227],[4.94,227],[4.96,227],[4.98,227],[5.0,227],[5.02,227],[5.04,227],[5.06,227],[5.08,227],[5.1,219],[5.12,219],[5.14,219],[5.16,219],[5.18,219],[5.2,219],[5.22,219],[5.24,219],[5.26,219],[5.28,219],[5.3,219],[5.32,219],[5.34,219],[5.36,219],[5.38,219],[5.4,219],[5.421,219],[5.44,219],[5.46,219],[5.48,219],[5.5,219],[5.52,219],[5.54,219],[5.56,219],[5.58,219],[5.6,227],[5.62,227],[5.641,227],[5.66,227],[5.68,227],[5.7,227],[5.72,227],[5.74,227],[5.76,227],[5.78,227],[5.8,227],[5.82,227],[5.84,227],[5.86,227],[5.88,227],[5.9,227],[5.92,227],[5.94,227],[5.96,227],[5.98,227],[6.0,227],[6.02,227],[6.04,227],[6.06,227],[6.08,227],[6.1,227],[6.12,227],[6.14,227],[6.16,227],[6.18,227],[6.2,227],[6.22,227],[6.24,227],[6.26,227],[6.28,227],[6.3,227],[6.32,226],[6.34,226],[6.36,226],[6.38,226],[6.4,226],[6.42,226],[6.44,226],[6.46,226],[6.48,226],[6.5,226],[6.593,226],[6.599,226],[6.6,226],[6.601,226],[6.602,226],[6.628,226],[6.64,226],[6.66,226],[6.68,226],[6.7,226],[6.72,226],[6.74,226],[6.76,226],[6.78,226],[6.8,226],[6.82,226],[6.84,226],[6.86,226],[6.88,226],[6.9,226],[6.92,226],[6.94,226],[6.96,226],[6.98,226],[7.0,226],[7.02,226],[7.04,226],[7.06,226],[7.08,226],[7.1,226],[7.12,226],[7.14,226],[7.16,226],[7.18,226],[7.2,226],[7.22,226],[7.24,226],[7.26,226],[7.28,226],[7.3,226],[7.32,226],[7.34,226],[7.36,226],[7.38,226],[7.4,226],[7.42,226],[7.44,226],[7.46,226],[7.48,226],[7.5,226],[7.52,226],[7.54,226],[7.56,226],[7.58,226],[7.6,226],[7.62,226],[7.64,226],[7.66,226],[7.68,226],[7.7,226],[7.72,226],[7.74,226],[7.76,226],[7.78,226],[7.8,226],[7.82,226],[7.84,226],[7.86,226],[7.88,226],[7.9,226],[7.92,226],[7.94,226],[7.96,226],[7.98,226],[8.0,226],[8.02,226],[8.04,226],[8.06,226],[8.08,226],[8.1,226],[8.12,226],[8.14,226],[8.16,226],[8.18,226],[8.2,226],[8.22,226],[8.24,226],[8.26,226],[8.28,226],[8.3,226],[8.32,226],[8.34,226],[8.36,226],[8.38,226],[8.4,226],[8.42,226],[8.44,226],[8.46,226],[8.48,226],[8.5,226],[8.52,226],[8.54,226],[8.56,226],[8.58,226],[8.6,226],[8.62,226],[8.64,226],[8.66,226],[8.68,226],[8.7,226],[8.72,226],[8.74,226],[8.76,226],[8.78,226],[8.8,226],[8.82,226],[8.84,226],[8.86,226],[8.88,226],[8.9,226],[8.92,226],[8.94,227],[8.961,227],[8.98,227],[9.0,227],[9.02,227],[9.04,227],[9.06,227],[9.08,227],[9.1,227],[9.12,227],[9.14,227],[9.16,227],[9.18,227],[9.2,227],[9.22,227],[9.24,227],[9.26,227],[9.28,227],[9.3,227],[9.32,227],[9.34,227],[9.36,227],[9.38,227],[9.4,227],[9.42,227],[9.44,227],[9.461,227],[9.48,227],[9.5,227],[9.52,227],[9.54,227],[9.561,227],[9.58,227],[9.6,227],[9.62,227],[9.64,227],[9.66,227],[9.68,227],[9.7,227],[9.72,227],[9.74,227],[9.76,227],[9.78,227],[9.8,227],[9.82,227],[9.84,227],[9.86,227],[9.88,227],[9.9,227],[9.92,227],[9.94,227],[9.96,227],[9.98,227],[10.0,227],[10.02,227],[10.04,227],[10.06,227],[10.08,227],[10.1,227],[10.12,227],[10.14,227],[10.16,227],[10.18,227],[10.2,227],[10.22,227],[10.24,227],[10.26,227],[10.28,227],[10.3,227],[10.32,227],[10.34,227],[10.361,227],[10.38,227],[10.4,227],[10.421,227],[10.44,227],[10.46,227],[10.48,227],[10.5,227],[10.52,227],[10.54,227],[10.56,227],[10.58,227],[10.6,227],[10.62,227],[10.64,227],[10.66,227],[10.68,227],[10.7,227],[10.721,227],[10.74,227],[10.761,227],[10.78,227],[10.801,227],[10.82,227],[10.84,227],[10.86,227],[10.88,227],[10.9,227],[10.92,227],[10.94,227],[10.961,227],[10.98,227],[11.0,227],[11.02,227],[11.04,227],[11.06,227],[11.081,227],[11.1,227],[11.12,227],[11.14,227],[11.16,227],[11.18,227],[11.2,227],[11.22,227],[11.24,227],[11.26,227],[11.281,227],[11.3,227],[11.32,227],[11.34,227],[11.36,227],[11.38,227],[11.4,227],[11.42,227],[11.441,227],[11.46,227],[11.48,227],[11.5,227],[11.52,227],[11.54,227],[11.56,227],[11.58,227],[11.6,227],[11.62,227],[11.64,227],[11.661,227],[11.68,227],[11.7,227],[11.72,227],[11.74,227],[11.761,227],[11.78,227],[11.8,227],[11.82,227],[11.84,227],[11.86,227],[11.88,227],[11.9,227],[11.92,227],[11.94,227],[11.96,227],[11.98,227],[12.0,227],[12.02,227],[12.04,227],[12.06,227],[12.08,227],[12.1,227],[12.12,227],[12.141,227],[12.16,227],[12.18,227],[12.2,227],[12.22,227],[12.24,227],[12.26,227],[12.28,227],[12.3,227],[12.32,227],[12.34,227],[12.36,227],[12.38,227],[12.4,227],[12.42,227],[12.44,227],[12.46,227],[12.48,219],[12.5,219],[12.521,219],[12.54,219],[12.56,219],[12.58,219],[12.6,219],[12.62,219],[12.64,219],[12.66,219],[12.68,219],[12.7,219],[12.72,219],[12.74,219],[12.76,219],[12.78,219],[12.8,219],[12.82,219],[12.84,219],[12.86,219],[12.88,219],[12.9,219],[12.92,219],[12.94,219],[12.961,219],[12.98,219],[13.0,219],[13.02,219],[13.04,219],[13.06,219],[13.08,219],[13.1,219],[13.12,219],[13.14,219],[13.161,219],[13.18,219],[13.2,219],[13.22,219],[13.24,219],[13.26,219],[13.28,219],[13.301,219],[13.32,219],[13.34,219],[13.36,219],[13.381,219],[13.4,219],[13.42,219],[13.44,227],[13.46,227],[13.48,227],[13.5,227],[13.52,227],[13.541,227],[13.561,227],[13.58,227],[13.6,227],[13.62,227],[13.64,227],[13.66,227],[13.68,227],[13.7,227],[13.72,227],[13.74,227],[13.76,227],[13.78,227],[13.8,227],[13.82,227],[13.84,227],[13.861,227],[13.88,227],[13.9,227],[13.92,227],[13.94,227],[13.96,227],[13.98,227],[14.0,227],[14.021,227],[14.04,227],[14.06,227],[14.08,227],[14.1,227],[14.12,227],[14.14,227],[14.161,227],[14.18,227],[14.201,227],[14.22,227],[14.24,227],[14.26,227],[14.28,227],[14.3,227],[14.32,227],[14.34,227],[14.361,227],[14.38,227],[14.401,227],[14.421,227],[14.44,227],[14.46,227],[14.48,227],[14.5,227],[14.52,227],[14.54,227],[14.56,227],[14.58,227],[14.6,227],[14.62,227],[14.64,227],[14.66,227],[14.68,227],[14.7,227],[14.721,227],[14.74,227],[14.76,227],[14.78,227],[14.8,227],[14.82,227],[14.84,227],[14.86,227],[14.88,227],[14.9,227],[14.92,227],[14.94,227],[14.96,227],[14.98,227],[15.0,227],[15.021,227],[15.04,227],[15.061,227],[15.08,227],[15.1,227],[15.12,227],[15.14,227],[15.16,227],[15.18,227],[15.201,227],[15.22,227],[15.24,227],[15.261,227],[15.281,227],[15.3,227],[15.32,227],[15.34,227],[15.36,227],[15.38,227],[15.4,227],[15.42,227],[15.44,227],[15.46,227],[15.48,227],[15.5,227],[15.52,227],[15.54,227],[15.56,227],[15.581,227],[15.6,227],[15.62,227],[15.64,227],[15.661,227],[15.68,227],[15.7,227],[15.72,227],[15.741,227],[15.76,227],[15.78,227],[15.8,227],[15.82,227],[15.84,227],[15.86,227],[15.881,227],[15.9,227],[15.92,227],[15.94,227],[15.961,227],[15.98,227],[16.0,227],[16.02,227],[16.04,227],[16.061,227],[16.08,227],[16.1,227],[16.121,227],[16.14,227],[16.16,227],[16.18,227],[16.2,227],[16.22,227],[16.24,227],[16.26,227],[16.28,227],[16.3,227],[16.32,227],[16.34,227],[16.36,227],[16.38,227],[16.4,227],[16.42,227],[16.44,227],[16.46,227],[16.48,227],[16.5,227],[16.521,227],[16.54,227],[16.56,227],[16.58,227],[16.601,227],[16.62,227],[16.64,227],[16.66,227],[16.68,227],[16.7,227],[16.72,227],[16.74,227],[16.76,227],[16.78,227],[16.8,227],[16.821,227],[16.84,227],[16.86,227],[16.88,227],[16.9,227],[16.92,227],[16.94,227],[16.96,227],[16.98,227],[17.0,226],[17.02,226],[17.04,226],[17.06,226],[17.08,226],[17.1,226],[17.12,226],[17.14,226],[17.16,226],[17.18,226],[17.2,226],[17.22,226],[17.24,226],[17.26,226],[17.28,226],[17.3,226],[17.32,226],[17.34,226],[17.36,226],[17.38,226],[17.4,226],[17.42,226],[17.44,226],[17.46,226],[17.48,226],[17.5,226],[17.52,226],[17.54,226],[17.56,226],[17.58,226],[17.6,226],[17.62,226],[17.64,226],[17.66,226],[17.68,226],[17.7,226],[17.72,226],[17.74,226],[17.76,226],[17.78,226],[17.8,226],[17.82,226],[17.84,226],[17.86,226],[17.88,226],[17.9,226],[17.92,226],[17.94,226],[17.96,226],[17.98,226],[18.0,226],[18.02,226],[18.04,226],[18.06,226],[18.08,226],[18.1,226],[18.12,226],[18.14,226],[18.16,226],[18.18,226],[18.2,226],[18.22,226],[18.24,226],[18.26,226],[18.28,226],[18.3,226],[18.32,226],[18.34,226],[18.36,226],[18.38,226],[18.4,226],[18.42,226],[18.44,226],[18.46,226],[18.48,226],[18.5,226],[18.52,226],[18.54,226],[18.56,226],[18.58,226],[18.6,226],[18.62,226],[18.64,226],[18.66,226],[18.68,226],[18.7,226],[18.72,226],[18.74,226],[18.76,226],[18.78,226],[18.8,226],[18.82,226],[18.84,226],[18.86,226],[18.88,226],[18.9,226],[18.92,226],[18.94,226],[18.96,226],[18.98,226],[19.0,226],[19.02,226],[19.04,226],[19.06,226],[19.08,226],[19.1,226],[19.12,226],[19.14,226],[19.16,226],[19.18,226],[19.2,226],[19.22,226],[19.24,226],[19.26,226],[19.28,226],[19.3,226],[19.32,226],[19.34,226],[19.36,226],[19.38,226],[19.4,226],[19.42,226],[19.44,226],[19.46,226],[19.48,226],[19.5,226],[19.52,226],[19.54,226],[19.56,226],[19.58,226],[19.6,226],[19.62,226],[19.64,226],[19.66,226],[19.68,226],[19.7,226],[19.72,226],[19.74,226],[19.76,226],[19.78,226],[19.8,226],[19.82,226],[19.84,226],[19.86,226],[19.88,226],[19.9,226],[19.92,226],[19.94,226],[19.96,226],[19.98,226]],"stroke39D":[[0.0,0.813],[0.02,0.813],[0.06,0.813],[0.1,0.813],[0.14,0.813],[0.2,0.813],[0.22,0.813],[0.26,0.813],[0.3,0.813],[0.34,0.813],[0.4,0.813],[0.42,0.813],[0.46,0.813],[0.5,0.813],[0.54,0.813],[0.6,0.813],[0.62,0.813],[0.66,0.813],[0.7,0.813],[0.74,0.813],[0.8,0.813],[0.82,0.813],[0.86,0.813],[0.9,0.813],[0.94,0.813],[1.0,0.813],[1.02,0.813],[1.06,0.813],[1.1,0.813],[1.14,0.813],[1.2,0.813],[1.22,0.813],[1.26,0.813],[1.3,0.813],[1.34,0.813],[1.4,0.813],[1.42,0.813],[1.46,0.813],[1.5,0.813],[1.54,0.813],[1.6,0.813],[1.62,0.813],[1.66,0.813],[1.7,0.813],[1.74,0.813],[1.8,0.813],[1.82,0.813],[1.86,0.813],[1.9,0.813],[1.94,0.813],[2.0,0.813],[2.02,0.813],[2.06,0.813],[2.1,0.813],[2.14,0.813],[2.2,0.813],[2.22,0.813],[2.26,0.813],[2.3,0.813],[2.34,0.813],[2.4,0.813],[2.42,0.813],[2.46,0.813],[2.5,0.813],[2.54,0.813],[2.6,0.863],[2.62,0.863],[2.66,0.863],[2.7,0.863],[2.74,0.863],[2.8,0.863],[2.82,0.863],[2.86,0.863],[2.9,0.913],[2.94,1.212],[3.0,1.811],[3.02,2.21],[3.06,3.158],[3.1,4.405],[3.14,5.653],[3.2,6.7],[3.22,7.499],[3.26,8.347],[3.3,9.345],[3.34,10.592],[3.4,12.089],[3.42,13.785],[3.46,15.532],[3.501,17.228],[3.54,18.725],[3.601,20.072],[3.62,21.22],[3.66,22.417],[3.701,23.515],[3.74,24.463],[3.801,25.161],[3.82,25.76],[3.86,26.458],[3.9,27.307],[3.94,28.105],[4.001,28.853],[4.02,29.652],[4.06,30.4],[4.101,31.049],[4.14,31.598],[4.2,31.947],[4.22,32.096],[4.26,32.296],[4.3,32.496],[4.34,32.845],[4.401,33.394],[4.42,33.992],[4.46,34.392],[4.5,34.691],[4.54,34.99],[4.6,35.389],[4.62,35.789],[4.66,36.337],[4.701,36.886],[4.74,37.335],[4.8,37.585],[4.82,37.834],[4.86,38.134],[4.901,38.433],[4.94,38.782],[5.001,39.231],[5.02,39.78],[5.06,40.423],[5.11,41.071],[5.14,41.77],[5.201,42.368],[5.22,41.82],[5.26,42.418],[5.3,41.919],[5.34,42.418],[5.4,42.219],[5.42,41.77],[5.46,41.52],[5.5,40.273],[5.54,38.782],[5.61,36.836],[5.62,34.541],[5.66,32.246],[5.701,30.001],[5.74,27.806],[5.8,25.411],[5.82,23.066],[5.86,20.721],[5.901,18.426],[5.94,16.031],[6.0,13.586],[6.02,11.191],[6.06,8.846],[6.101,6.7],[6.14,4.854],[6.2,3.507],[6.22,2.759],[6.26,2.21],[6.3,1.811],[6.34,1.162],[6.4,0.913],[6.42,0.863],[6.46,0.863],[6.501,0.813],[6.591,0.813],[6.6,0.813],[6.626,0.813],[6.66,0.813],[6.7,0.813],[6.74,0.813],[6.8,0.813],[6.82,0.813],[6.86,0.813],[6.9,0.813],[6.94,0.813],[7.0,0.813],[7.02,0.813],[7.06,0.813],[7.1,0.813],[7.14,0.813],[7.21,0.813],[7.25,0.813],[7.29,0.813],[7.31,0.813],[7.34,0.813],[7.4,0.813],[7.42,0.813],[7.46,0.813],[7.5,0.813],[7.54,0.813],[7.6,0.813],[7.62,0.813],[7.66,0.813],[7.7,0.813],[7.74,0.813],[7.8,0.813],[7.82,0.813],[7.86,0.813],[7.9,0.813],[7.94,0.813],[8.0,0.813],[8.02,0.813],[8.06,0.813],[8.1,0.813],[8.14,0.813],[8.2,0.813],[8.22,0.813],[8.26,0.813],[8.3,0.813],[8.34,0.813],[8.4,0.813],[8.42,0.813],[8.46,0.813],[8.5,0.813],[8.54,0.813],[8.6,0.813],[8.62,0.813],[8.66,0.813],[8.7,0.813],[8.74,0.813],[8.8,0.863],[8.82,0.863],[8.86,0.913],[8.9,1.362],[8.94,1.611],[9.001,1.861],[9.02,2.16],[9.06,2.509],[9.101,2.909],[9.14,3.407],[9.201,3.906],[9.22,4.206],[9.26,4.206],[9.301,4.256],[9.34,4.505],[9.401,4.854],[9.42,5.353],[9.461,5.802],[9.501,6.052],[9.54,6.152],[9.601,6.251],[9.62,6.301],[9.66,6.451],[9.7,6.7],[9.74,7.0],[9.801,7.299],[9.82,7.698],[9.86,8.048],[9.901,8.547],[9.94,9.145],[10.001,9.894],[10.02,10.842],[10.06,11.79],[10.101,12.788],[10.14,13.735],[10.201,14.683],[10.22,15.731],[10.26,16.729],[10.301,17.777],[10.34,18.725],[10.401,19.623],[10.421,20.421],[10.46,20.82],[10.501,20.87],[10.54,20.87],[10.6,20.87],[10.62,20.87],[10.66,20.97],[10.701,21.22],[10.74,21.369],[10.801,21.469],[10.82,21.619],[10.86,21.719],[10.901,21.768],[10.94,21.918],[11.001,22.068],[11.02,22.267],[11.06,22.517],[11.101,22.816],[11.14,23.116],[11.201,23.415],[11.22,23.764],[11.26,24.113],[11.301,24.562],[11.34,25.111],[11.401,25.71],[11.42,26.309],[11.46,26.908],[11.5,27.606],[11.54,28.404],[11.6,29.253],[11.62,30.051],[11.66,30.899],[11.7,31.598],[11.74,32.296],[11.801,32.945],[11.82,33.543],[11.86,34.092],[11.901,34.641],[11.94,35.09],[12.001,35.589],[12.02,36.038],[12.06,36.487],[12.101,36.986],[12.141,37.435],[12.2,37.884],[12.22,38.233],[12.26,38.583],[12.301,38.932],[12.34,39.231],[12.401,39.581],[12.42,39.98],[12.491,40.373],[12.501,40.772],[12.54,41.121],[12.601,41.47],[12.62,41.869],[12.66,42.169],[12.701,41.919],[12.74,42.269],[12.801,41.77],[12.82,41.82],[12.86,41.67],[12.901,41.57],[12.94,41.57],[13.001,41.52],[13.02,41.52],[13.06,41.47],[13.101,41.42],[13.14,41.271],[13.201,41.071],[13.22,40.822],[13.26,40.572],[13.301,40.273],[13.34,39.924],[13.401,39.475],[13.451,38.982],[13.46,38.383],[13.501,37.735],[13.541,37.086],[13.601,36.487],[13.62,35.938],[13.66,35.389],[13.701,34.841],[13.74,34.292],[13.801,33.743],[13.82,33.294],[13.861,32.845],[13.9,32.446],[13.94,32.047],[14.0,31.598],[14.021,31.198],[14.061,30.749],[14.101,30.3],[14.14,29.851],[14.201,29.402],[14.22,28.953],[14.26,28.504],[14.301,27.955],[14.34,27.307],[14.401,26.558],[14.421,25.76],[14.46,24.862],[14.501,24.064],[14.54,23.565],[14.6,23.265],[14.62,23.116],[14.66,22.866],[14.7,22.667],[14.74,22.417],[14.801,22.168],[14.82,21.968],[14.86,21.719],[14.901,21.469],[14.94,21.22],[15.001,20.97],[15.021,20.721],[15.061,20.471],[15.101,20.222],[15.14,19.922],[15.201,19.673],[15.22,19.423],[15.261,19.174],[15.301,18.924],[15.34,18.725],[15.401,18.475],[15.42,18.226],[15.46,18.026],[15.501,17.777],[15.54,17.527],[15.601,17.228],[15.62,16.929],[15.661,16.629],[15.701,16.33],[15.741,15.931],[15.801,15.532],[15.82,15.033],[15.86,14.484],[15.901,13.885],[15.94,13.137],[16.001,12.289],[16.02,11.39],[16.06,10.442],[16.101,9.495],[16.14,8.596],[16.201,7.848],[16.22,7.199],[16.26,6.601],[16.301,5.952],[16.34,5.403],[16.401,4.954],[16.42,4.655],[16.46,4.405],[16.501,4.106],[16.54,3.757],[16.601,3.407],[16.62,3.158],[16.66,2.958],[16.701,2.709],[16.74,2.41],[16.801,2.01],[16.821,1.561],[16.86,1.162],[16.901,0.913],[16.94,0.863],[17.001,0.863],[17.02,0.863],[17.06,0.863],[17.101,0.863],[17.14,0.863],[17.201,0.863],[17.22,0.863],[17.26,0.863],[17.301,0.813],[17.35,0.813],[17.4,0.813],[17.42,0.813],[17.46,0.813],[17.5,0.813],[17.54,0.813],[17.6,0.813],[17.62,0.813],[17.66,0.813],[17.73,0.813],[17.77,0.813],[17.81,0.813],[17.83,0.813],[17.86,0.813],[17.9,0.813],[17.94,0.813],[18.0,0.813],[18.02,0.813],[18.06,0.813],[18.1,0.813],[18.14,0.813],[18.2,0.813],[18.22,0.813],[18.26,0.813],[18.3,0.813],[18.34,0.813],[18.4,0.813],[18.42,0.813],[18.46,0.813],[18.5,0.813],[18.54,0.813],[18.6,0.813],[18.62,0.813],[18.66,0.813],[18.7,0.813],[18.74,0.813],[18.8,0.813],[18.82,0.813],[18.86,0.813],[18.901,0.813],[18.94,0.813],[19.0,0.813],[19.02,0.813],[19.06,0.813],[19.1,0.813],[19.14,0.813],[19.2,0.813],[19.22,0.813],[19.26,0.813],[19.3,0.813],[19.34,0.813],[19.4,0.813],[19.42,0.813],[19.46,0.813],[19.501,0.813],[19.54,0.813],[19.6,0.813],[19.62,0.813],[19.66,0.813],[19.7,0.813],[19.74,0.813],[19.8,0.813],[19.82,0.813],[19.86,0.813],[19.901,0.813],[19.94,0.813]],"events":[{"run":"sweep1","peak":9.64,"dur":0.78,"integ":4.9,"vmax":63.7,"uptime":88.7,"f":{"0x38D b5:b6":1181,"0x37D b0:b1":42,"0x31D b2\u25b8":1,"0x31D b6":2,"0x31D b7":1,"0x37D b5":92,"0x33D b0":6,"0x33D b4":81,"0x33D b5":79,"0x33D b6":83,"0x33D b7":78,"0x34D b3":11,"0x34D b4":23,"0x34D b5":42,"0x36D b1":1,"0x38D b6":4},"raw":{"33D":"06 00 00 00 51 4F 53 4E","31D":"77 03 10 00 00 04 02 01","34D":"00 00 28 0B 17 2A 00 00","36D":"21 01 00 00 00 89 B2 8D","37D":"2A 00 00 00 00 5C 58 00","38D":"00 00 00 00 70 9D 04 00"}},{"run":"sweep1","peak":10.34,"dur":10.08,"integ":59.6,"vmax":60.3,"uptime":86.8,"f":{"0x38D b5:b6":1181,"0x37D b0:b1":275,"0x31D b2\u25b8":4,"0x31D b6":2,"0x31D b7":3,"0x37D b5":92,"0x33D b0":6,"0x33D b4":81,"0x33D b5":79,"0x33D b6":81,"0x33D b7":78,"0x34D b3":7,"0x34D b4":12,"0x34D b5":40,"0x36D b1":12,"0x38D b6":4},"raw":{"33D":"06 00 00 00 51 4F 51 4E","31D":"64 03 40 00 00 03 02 03","34D":"01 00 A8 07 0C 28 00 00","36D":"E1 0C 00 00 00 09 D4 8D","37D":"13 01 00 00 00 5C D8 01","38D":"00 00 00 00 70 9D 04 00"}},{"run":"sweep1","peak":16.08,"dur":1.66,"integ":14.4,"vmax":61.4,"uptime":74.0,"f":{"0x38D b5:b6":1949,"0x37D b0:b1":63,"0x31D b2\u25b8":1,"0x31D b6":2,"0x31D b7":3,"0x37D b5":92,"0x33D b0":6,"0x33D b4":85,"0x33D b5":77,"0x33D b6":86,"0x33D b7":76,"0x34D b3":6,"0x34D b4":20,"0x34D b5":40,"0x36D b1":2,"0x38D b6":7},"raw":{"33D":"06 00 00 00 55 4D 56 4C","31D":"E4 02 10 00 00 03 02 03","34D":"00 00 28 06 14 28 00 00","36D":"61 02 00 00 00 90 D4 85","37D":"3F 00 00 00 00 5C 58 00","38D":"00 00 00 00 70 9D 07 00"}},{"run":"sweep1","peak":33.64,"dur":10.36,"integ":301.3,"vmax":113.2,"uptime":106.0,"f":{"0x38D b5:b6":4257,"0x37D b0:b1":283,"0x31D b2\u25b8":4,"0x31D b6":1,"0x31D b7":5,"0x37D b5":92,"0x33D b0":7,"0x33D b4":83,"0x33D b5":81,"0x33D b6":83,"0x33D b7":82,"0x34D b3":2,"0x34D b4":7,"0x34D b5":42,"0x36D b1":13,"0x38D b6":16},"raw":{"33D":"07 00 00 00 53 51 53 52","31D":"24 04 40 00 00 04 01 05","34D":"1B 00 28 02 07 2A 0C 00","36D":"61 0D 00 00 00 A1 D1 91","37D":"1B 01 00 00 00 5C D8 00","38D":"00 00 00 00 70 A1 10 00"}},{"run":"assist","peak":42.27,"dur":7.78,"integ":171.2,"vmax":52.8,"uptime":35.7,"f":{"0x38D b5:b6":5265,"0x37D b0:b1":221,"0x31D b2\u25b8":4,"0x31D b6":1,"0x31D b7":5,"0x37D b5":88,"0x33D b0":22,"0x33D b4":88,"0x33D b5":83,"0x33D b6":90,"0x33D b7":85,"0x34D b3":3,"0x34D b4":19,"0x34D b5":38,"0x36D b1":10,"0x38D b6":20},"raw":{"33D":"16 00 00 00 58 53 5A 55","31D":"65 01 40 00 00 02 01 05","34D":"00 00 28 03 13 26 00 00","36D":"21 0A 00 00 00 2A D6 85","37D":"DD 00 00 00 00 58 57 01","38D":"00 00 00 00 70 91 14 00"}},{"run":"cal","peak":42.42,"dur":23.1,"integ":650.2,"vmax":146.3,"uptime":36.9,"f":{"0x38D b5:b6":5401,"0x37D b0:b1":603,"0x31D b2\u25b8":6,"0x31D b6":0,"0x31D b7":5,"0x37D b5":88,"0x33D b0":29,"0x33D b4":81,"0x33D b5":81,"0x33D b6":83,"0x33D b7":84,"0x34D b3":1,"0x34D b4":0,"0x34D b5":38,"0x36D b1":29,"0x38D b6":21},"raw":{"33D":"1D 00 00 00 51 51 53 54","31D":"71 01 60 00 00 03 00 05","34D":"00 00 28 01 00 26 00 00","36D":"61 1D 00 00 00 6A D1 8D","37D":"5B 02 00 00 00 58 98 0D","38D":"00 00 00 00 70 19 15 00"}},{"run":"assist","peak":42.42,"dur":3.24,"integ":84.4,"vmax":86.4,"uptime":25.2,"f":{"0x38D b5:b6":5405,"0x37D b0:b1":106,"0x31D b2\u25b8":2,"0x31D b6":0,"0x31D b7":5,"0x37D b5":88,"0x33D b0":22,"0x33D b4":85,"0x33D b5":82,"0x33D b6":87,"0x33D b7":83,"0x34D b3":1,"0x34D b4":8,"0x34D b5":38,"0x36D b1":4,"0x38D b6":21},"raw":{"33D":"16 00 00 00 55 52 57 53","31D":"FC 00 20 00 00 03 00 05","34D":"2A 00 28 01 08 26 30 00","36D":"61 04 00 00 00 AA C1 95","37D":"6A 00 00 00 00 58 D8 01","38D":"00 00 00 00 70 1D 15 00"}},{"run":"cal2","peak":42.42,"dur":49.0,"integ":1196.0,"vmax":322.1,"uptime":56.6,"f":{"0x38D b5:b6":5405,"0x37D b0:b1":1380,"0x31D b2\u25b8":7,"0x31D b6":0,"0x31D b7":5,"0x37D b5":88,"0x33D b0":25,"0x33D b4":83,"0x33D b5":83,"0x33D b6":84,"0x33D b7":85,"0x34D b3":4,"0x34D b4":7,"0x34D b5":40,"0x36D b1":6,"0x38D b6":21},"raw":{"33D":"19 00 0A 00 53 53 54 55","31D":"36 02 70 00 00 03 00 05","34D":"E9 01 A8 04 07 28 C8 03","36D":"9D 06 00 00 00 2A E6 8D","37D":"64 05 00 00 00 58 D7 0A","38D":"00 00 00 00 70 1D 15 00"}},{"run":"sweep1","peak":42.82,"dur":5.2,"integ":114.0,"vmax":114.0,"uptime":67.9,"f":{"0x38D b5:b6":5409,"0x37D b0:b1":153,"0x31D b2\u25b8":3,"0x31D b6":0,"0x31D b7":5,"0x37D b5":88,"0x33D b0":43,"0x33D b4":86,"0x33D b5":81,"0x33D b6":89,"0x33D b7":82,"0x34D b3":1,"0x34D b4":9,"0x34D b5":40,"0x36D b1":6,"0x38D b6":21},"raw":{"33D":"2B 00 00 00 56 51 59 52","31D":"A7 02 30 00 00 03 00 05","34D":"2A 00 28 01 09 28 54 00","36D":"E1 06 00 00 00 AA B1 A1","37D":"99 00 01 00 00 58 D8 05","38D":"00 00 00 00 70 21 15 00"}},{"run":"sweep1","peak":43.17,"dur":18.88,"integ":369.5,"vmax":136.1,"uptime":61.4,"f":{"0x38D b5:b6":5545,"0x37D b0:b1":497,"0x31D b2\u25b8":5,"0x31D b6":0,"0x31D b7":5,"0x37D b5":88,"0x33D b0":34,"0x33D b4":87,"0x33D b5":84,"0x33D b6":89,"0x33D b7":85,"0x34D b3":8,"0x34D b4":5,"0x34D b5":38,"0x36D b1":8,"0x38D b6":21},"raw":{"33D":"22 00 00 00 57 54 59 55","31D":"66 02 50 00 00 04 00 05","34D":"EB 00 28 08 05 26 74 00","36D":"E1 08 00 00 00 6A A1 CD","37D":"F1 01 00 00 00 58 D9 12","38D":"00 00 00 00 70 A9 15 00"}}]};
+
+const NS="http://www.w3.org/2000/svg";
+const tip=document.getElementById("tip");
+function el(p,n,a={}){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p.appendChild(e);return e;}
+function showTip(ev,txt){tip.textContent=txt;tip.style.opacity=1;
+  const r=tip.getBoundingClientRect();
+  let x=ev.clientX+14,y=ev.clientY-r.height-10;
+  if(x+r.width>innerWidth-8)x=ev.clientX-r.width-14;
+  if(y<8)y=ev.clientY+18;
+  tip.style.left=x+"px";tip.style.top=y+"px";}
+function hideTip(){tip.style.opacity=0;}
+function svg(host,w,h){const s=el(document.getElementById(host),"svg",
+  {viewBox:`0 0 ${w} ${h}`,width:w,height:h,role:"img"});
+  s.style.width="100%";s.style.minWidth=Math.min(w,660)+"px";return s;}
+const fmt=(v,d=1)=>v.toFixed(d);
+
+/* ============ 1. TRACE + LOGIC LANES ============ */
+(function(){
+  const W=980,H=340,L=112,R=16,T=14,traceH=176,laneH=26,laneGap=8;
+  const s=svg("c-trace",W,H);
+  const d=DATA.stroke39D, xmax=20, ymax=46;
+  const X=t=>L+(t/xmax)*(W-L-R), Y=v=>T+traceH-(v/ymax)*traceH;
+  const g=el(s,"g",{class:"grid"});
+  for(let v=0;v<=40;v+=10) el(g,"line",{x1:L,x2:W-R,y1:Y(v),y2:Y(v)});
+  const ax=el(s,"g",{class:"axis"});
+  for(let v=0;v<=40;v+=10){el(ax,"text",{x:L-8,y:Y(v)+3.5,"text-anchor":"end"}).textContent=v;}
+  el(s,"text",{x:L-8,y:Y(46)-2,"text-anchor":"end",class:"alab"}).textContent="mm";
+  el(ax,"line",{x1:L,x2:W-R,y1:Y(0),y2:Y(0)});
+  for(let t=0;t<=20;t+=2){el(ax,"line",{x1:X(t),x2:X(t),y1:Y(0),y2:Y(0)+4});
+    el(ax,"text",{x:X(t),y:Y(0)+16,"text-anchor":"middle"}).textContent=t+"s";}
+  // end-stop reference
+  el(s,"line",{x1:L,x2:W-R,y1:Y(43.4),y2:Y(43.4),stroke:"var(--rule-2)","stroke-dasharray":"3 4","stroke-width":1});
+  el(s,"text",{x:W-R,y:Y(43.4)-5,"text-anchor":"end",class:"axis",fill:"var(--muted)",
+    style:"font-family:ui-monospace,Menlo,monospace;font-size:10px"}).textContent="end stop 43.4";
+  // trace
+  let path="";d.forEach((p,i)=>{path+=(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1);});
+  el(s,"path",{d:path,fill:"none",stroke:"var(--veh)","stroke-width":2,"stroke-linejoin":"round"});
+  // lanes
+  const lanes=[
+    {name:"0x38F b2 bit0",col:"var(--yaw)",get:()=>DATA.state38F.map(p=>[p[0],p[1]&1])},
+    {name:"0x38E b6",col:"var(--aqua)",get:()=>DATA.pos38E.map(p=>[p[0],p[2]])},
+    {name:"0x38F b2 \u2192 0xDB",col:"var(--crit)",get:()=>DATA.state38F.map(p=>[p[0],p[1]===0xDB?1:0])}
+  ];
+  lanes.forEach((ln,i)=>{
+    const y0=T+traceH+34+i*(laneH+laneGap);
+    el(s,"text",{x:L-8,y:y0+laneH/2+3.5,"text-anchor":"end",class:"axis",
+      style:"font-family:ui-monospace,Menlo,monospace;font-size:10px"}).textContent=ln.name;
+    el(s,"rect",{x:L,y:y0,width:W-L-R,height:laneH,fill:"var(--surface-2)",rx:2});
+    const pts=ln.get();let start=null;
+    pts.forEach((p,k)=>{
+      if(p[1]&&start===null)start=p[0];
+      if((!p[1]||k===pts.length-1)&&start!==null){
+        const x1=X(start),x2=X(p[0]);
+        el(s,"rect",{x:x1,y:y0+3,width:Math.max(2,x2-x1),height:laneH-6,fill:ln.col,rx:2});
+        start=null;}
+    });
+  });
+  // crosshair
+  const cross=el(s,"line",{x1:0,x2:0,y1:T,y2:T+traceH,stroke:"var(--rule-2)","stroke-width":1,opacity:0});
+  const hit=el(s,"rect",{x:L,y:T,width:W-L-R,height:H-T,fill:"transparent"});
+  hit.addEventListener("mousemove",e=>{
+    const r=s.getBoundingClientRect(),sc=W/r.width;
+    const px=(e.clientX-r.left)*sc, t=(px-L)/(W-L-R)*xmax;
+    if(t<0||t>xmax)return;
+    cross.setAttribute("x1",px);cross.setAttribute("x2",px);cross.setAttribute("opacity",1);
+    let best=d[0];for(const p of d)if(Math.abs(p[0]-t)<Math.abs(best[0]-t))best=p;
+    let st=DATA.state38F[0];for(const p of DATA.state38F)if(p[0]<=t)st=p;
+    let po=DATA.pos38E[0];for(const p of DATA.pos38E)if(p[0]<=t)po=p;
+    showTip(e,`t = ${fmt(best[0],2)} s\ntravel = ${fmt(best[1],2)} mm\n0x38F b2 = 0x${st[1].toString(16).toUpperCase().padStart(2,"0")}\n0x38E b6 = ${po[2]}`);
+  });
+  hit.addEventListener("mouseleave",()=>{cross.setAttribute("opacity",0);hideTip();});
+  const lg=document.createElement("div");lg.className="legend";
+  lg.innerHTML=`<span><i style="background:var(--veh)"></i>rod travel \u00b7 0x39D</span>
+    <span><i style="background:var(--yaw)"></i>0x38F brake bit</span>
+    <span><i style="background:var(--aqua)"></i>0x38E b6 brake flag</span>
+    <span><i style="background:var(--crit)"></i>0x38F near-end-of-travel state</span>`;
+  document.getElementById("c-trace").appendChild(lg);
+})();
+
+/* ============ 2. THRESHOLD MAP ============ */
+(function(){
+  const W=980,H=302,L=132,R=44;
+  const s=svg("c-thresh",W,H);
+  const panels=[
+    {title:"brake flags \u2014 detail, 0 to 3 mm of travel", y0:28, lo:0, hi:3, step:0.5,
+     rows:[
+      {n:"0x38F b2 bit0",c:"var(--yaw)",on:[1.45,1.66],off:null,note:"trips first \u00b7 release edge sampled at 50 Hz, not resolved"},
+      {n:"0x38E b6",c:"var(--aqua)",on:[2.18,2.42],off:[1.72,1.75],note:"0.55 mm of hysteresis between on and off"}]},
+    {title:"end-of-travel state \u2014 detail, 38 to 41 mm", y0:202, lo:38, hi:41, step:0.5,
+     rows:[
+      {n:"0x38F b2 \u2192 0xDB",c:"var(--crit)",on:[39.75,40.16],off:[38.77,39.51],note:"end stop itself is at 43.4 mm"}]}
+  ];
+  panels.forEach(p=>{
+    const X=v=>L+((v-p.lo)/(p.hi-p.lo))*(W-L-R);
+    const base=p.y0+p.rows.length*52+6;
+    el(s,"text",{x:L,y:p.y0-12,class:"axis",style:"font-size:11px;fill:var(--ink-2)"}).textContent=p.title;
+    const ax=el(s,"g",{class:"axis"});
+    el(ax,"line",{x1:L,x2:W-R,y1:base,y2:base});
+    for(let v=p.lo;v<=p.hi+1e-9;v+=p.step){
+      el(ax,"line",{x1:X(v),x2:X(v),y1:base,y2:base+4});
+      el(ax,"text",{x:X(v),y:base+16,"text-anchor":"middle"}).textContent=v.toFixed(1);
+    }
+    el(s,"text",{x:W-R,y:base+30,"text-anchor":"end",class:"alab"}).textContent="rod travel (mm)";
+    p.rows.forEach((r,i)=>{
+      const y=p.y0+i*52+8;
+      el(s,"text",{x:L-12,y:y+4,"text-anchor":"end",class:"axis",
+        style:"font-family:ui-monospace,Menlo,monospace;font-size:11px;fill:var(--ink)"}).textContent=r.n;
+      el(s,"line",{x1:L,x2:W-R,y1:y,y2:y,stroke:"var(--rule)","stroke-width":1});
+      const x1=X(r.on[0]),x2=X(r.on[1]);
+      el(s,"rect",{x:x1-1,y:y-10,width:Math.max(4,x2-x1+2),height:20,fill:r.c,rx:2});
+      el(s,"text",{x:(x1+x2)/2,y:y-16,"text-anchor":"middle",class:"axis",
+        style:"font-family:ui-monospace,Menlo,monospace;font-size:10.5px;fill:var(--ink)"})
+        .textContent=`on ${fmt(r.on[0],2)}\u2013${fmt(r.on[1],2)}`;
+      if(r.off){
+        const o1=X(r.off[0]),o2=X(r.off[1]);
+        el(s,"rect",{x:o1-1,y:y-10,width:Math.max(4,o2-o1+2),height:20,fill:"none",
+          stroke:r.c,"stroke-width":1.5,"stroke-dasharray":"3 3",rx:2});
+        el(s,"text",{x:(o1+o2)/2,y:y-16,"text-anchor":"middle",class:"axis",
+          style:"font-family:ui-monospace,Menlo,monospace;font-size:10.5px;fill:var(--ink-2)"})
+          .textContent=`off ${fmt(r.off[0],2)}\u2013${fmt(r.off[1],2)}`;
+      }
+      el(s,"text",{x:L,y:y+26,class:"axis",style:"font-size:10.5px;fill:var(--muted)"}).textContent=r.note;
+    });
+  });
+  const lg=document.createElement("div");lg.className="legend";
+  lg.innerHTML=`<span><i style="background:var(--ink-2)"></i>solid = rising edge (flag turns on)</span>
+    <span><i style="background:transparent;border:1.5px dashed var(--ink-2)"></i>dashed = falling edge</span>`;
+  document.getElementById("c-thresh").appendChild(lg);
+})();
+
+/* ============ 3. CORRELATION HEATMAP ============ */
+(function(){
+  const ev=DATA.events;
+  const fields=Object.keys(ev[0].f);
+  const metrics=[["peak","peak travel"],["dur","duration"],["integ","\u222b travel\u00b7dt"],["vmax","peak rate"],["uptime","uptime (control)"]];
+  function pear(a,b){const n=a.length,ma=a.reduce((s,v)=>s+v,0)/n,mb=b.reduce((s,v)=>s+v,0)/n;
+    let sa=0,sb=0,sab=0;for(let i=0;i<n;i++){sa+=(a[i]-ma)**2;sb+=(b[i]-mb)**2;sab+=(a[i]-ma)*(b[i]-mb);}
+    return (sa&&sb)?sab/Math.sqrt(sa*sb):0;}
+  const cw=118,ch=27,L=132,T=54,W=L+metrics.length*cw+14,H=T+fields.length*ch+22;
+  const s=svg("c-heat",W,H);
+  metrics.forEach((m,j)=>{
+    el(s,"text",{x:L+j*cw+cw/2,y:T-24,"text-anchor":"middle",class:"axis",
+      style:"font-size:11px;fill:var(--ink)"}).textContent=m[1];
+  });
+  el(s,"line",{x1:L,x2:L+metrics.length*cw-2,y1:T-14,y2:T-14,stroke:"var(--rule-2)","stroke-width":1});
+  fields.forEach((f,i)=>{
+    el(s,"text",{x:L-12,y:T+i*ch+ch/2+4,"text-anchor":"end",class:"axis",
+      style:"font-family:ui-monospace,Menlo,monospace;font-size:11px;fill:var(--ink)"}).textContent=f;
+    const fv=ev.map(e=>e.f[f]);
+    metrics.forEach((m,j)=>{
+      const mv=ev.map(e=>e[m[0]]);
+      const r=pear(mv,fv), a=Math.min(1,Math.abs(r));
+      const col=r>=0?"var(--pos)":"var(--neg)";
+      const g=el(s,"g",{});
+      el(g,"rect",{x:L+j*cw,y:T+i*ch,width:cw-2,height:ch-2,fill:"var(--mid)",rx:2});
+      el(g,"rect",{x:L+j*cw,y:T+i*ch,width:cw-2,height:ch-2,fill:col,opacity:(a**1.6).toFixed(3),rx:2});
+      el(g,"text",{x:L+j*cw+cw/2,y:T+i*ch+ch/2+3.5,"text-anchor":"middle",
+        style:`font-family:ui-monospace,Menlo,monospace;font-size:10.5px;font-variant-numeric:tabular-nums;fill:${a>.62?"var(--surface)":"var(--ink-2)"}`
+        }).textContent=(r>=0?"+":"")+r.toFixed(2);
+      const hit=el(g,"rect",{x:L+j*cw,y:T+i*ch,width:cw-2,height:ch-2,fill:"transparent"});
+      hit.style.cursor="pointer";
+      hit.addEventListener("mousemove",e=>showTip(e,`${f}  vs  ${m[1]}\nr = ${r.toFixed(3)}   n = ${ev.length}\nvalues: ${fv.join(", ")}`));
+      hit.addEventListener("mouseleave",hideTip);
+    });
+  });
+  const lg=document.createElement("div");lg.className="legend";
+  lg.innerHTML=`<span><i style="background:var(--pos)"></i>positive r</span>
+    <span><i style="background:var(--neg)"></i>negative r</span>
+    <span><i style="background:var(--mid)"></i>no relationship</span>
+    <span style="color:var(--muted)">saturation = |r| \u00b7 hover a cell for the raw values</span>`;
+  document.getElementById("c-heat").appendChild(lg);
+})();
+
+/* ============ scatter helper ============ */
+function scatter(host,opts){
+  const W=opts.W||620,H=310,L=64,R=22,T=32,B=48;
+  const s=svg(host,W,H);
+  const pts=opts.pts;
+  const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+  const lx=opts.logx===true;
+  const xlo=opts.xlo!==undefined?opts.xlo:(lx?Math.min(...xs)*0.7:0);
+  const xhi=opts.xhi!==undefined?opts.xhi:Math.max(...xs)*1.06;
+  const ylo=opts.ylo!==undefined?opts.ylo:0, yhi=opts.yhi!==undefined?opts.yhi:Math.max(...ys)*1.08;
+  const X=v=>lx?L+(Math.log(v)-Math.log(xlo))/(Math.log(xhi)-Math.log(xlo))*(W-L-R)
+                :L+(v-xlo)/(xhi-xlo)*(W-L-R);
+  const Y=v=>H-B-(v-ylo)/(yhi-ylo)*(H-T-B);
+  const g=el(s,"g",{class:"grid"});
+  opts.yticks.forEach(v=>el(g,"line",{x1:L,x2:W-R,y1:Y(v),y2:Y(v)}));
+  const ax=el(s,"g",{class:"axis"});
+  opts.yticks.forEach(v=>el(ax,"text",{x:L-9,y:Y(v)+3.5,"text-anchor":"end"}).textContent=v);
+  el(ax,"line",{x1:L,x2:W-R,y1:H-B,y2:H-B});
+  opts.xticks.forEach(v=>{el(ax,"line",{x1:X(v),x2:X(v),y1:H-B,y2:H-B+4});
+    el(ax,"text",{x:X(v),y:H-B+17,"text-anchor":"middle"}).textContent=v;});
+  el(s,"text",{x:(L+W-R)/2,y:H-8,"text-anchor":"middle",class:"alab"}).textContent=opts.xlab;
+  el(s,"text",{x:2,y:12,"text-anchor":"start",class:"alab"}).textContent=opts.ylab;
+  if(opts.fit){
+    const n=pts.length,mx=xs.reduce((a,b)=>a+b)/n,my=ys.reduce((a,b)=>a+b)/n;
+    let sxx=0,sxy=0;for(let i=0;i<n;i++){sxx+=(xs[i]-mx)**2;sxy+=(xs[i]-mx)*(ys[i]-my);}
+    const m=sxy/sxx,c=my-m*mx;
+    const a=Math.min(...xs),b=Math.max(...xs);
+    el(s,"line",{x1:X(a),y1:Y(m*a+c),x2:X(b),y2:Y(m*b+c),
+      stroke:"var(--rule-2)","stroke-width":1.5,"stroke-dasharray":"5 4"});
+    el(s,"text",{x:W-R,y:T+12,"text-anchor":"end",class:"axis",
+      style:"font-family:ui-monospace,Menlo,monospace;font-size:10.5px;fill:var(--muted)"}).textContent=opts.fitlab(m,c);
+  }
+  pts.forEach(p=>{
+    const c=el(s,"circle",{cx:X(p.x),cy:Y(p.y),r:6,fill:opts.col||"var(--veh)",class:"dot"});
+    c.addEventListener("mousemove",e=>showTip(e,p.tip));
+    c.addEventListener("mouseleave",hideTip);
+  });
+}
+
+const ev=DATA.events;
+scatter("c-peak",{
+  pts:ev.map(e=>({x:e.peak,y:e.f["0x38D b5:b6"],
+    tip:`${e.run}\npeak travel  ${e.peak} mm\n0x38D b5:b6  ${e.f["0x38D b5:b6"]}`})),
+  xticks:[0,10,20,30,40],yticks:[0,1000,2000,3000,4000,5000],
+  xlab:"peak rod travel from 0x39D (mm)",ylab:"0x38D b5:b6",
+  fit:true,fitlab:(m,c)=>`${m.toFixed(1)} counts/mm   r = 0.9997`,W:620});
+scatter("c-dur",{
+  pts:ev.map(e=>({x:e.dur,y:e.f["0x37D b0:b1"],
+    tip:`${e.run}\nheld for  ${e.dur} s\n0x37D b0:b1  ${e.f["0x37D b0:b1"]}`})),
+  xticks:[0,10,20,30,40,50],yticks:[0,400,800,1200,1600],yhi:1660,
+  xlab:"brake applied (seconds)",ylab:"0x37D b0:b1",col:"var(--yaw)",
+  fit:true,fitlab:(m,c)=>`${m.toFixed(1)} ticks/s   r = 0.9988`,W:620});
+scatter("c-bucket",{
+  pts:ev.map(e=>({x:e.dur,y:e.f["0x31D b2\u25b8"],
+    tip:`${e.run}\nheld for  ${e.dur} s\nbucket  ${e.f["0x31D b2\u25b8"]}`})),
+  logx:true,xlo:0.6,xhi:64,xticks:[1,2,4,8,16,32,64],yticks:[0,2,4,6,8],ylo:0,yhi:8,
+  xlab:"brake applied (seconds, log scale)",ylab:"0x31D b2 \u25b8 4",col:"var(--aqua)",W:620});
+
+/* ============ 4. 0x33D SMALL MULTIPLES ============ */
+(function(){
+  const bytes=["0x33D b4","0x33D b5","0x33D b6","0x33D b7"];
+  const cols=["var(--seq1)","var(--seq2)","var(--seq3)","var(--seq4)"];
+  const pw=232,ph=200,L=38,R=12,T=26,B=40,W=pw*4,H=ph;
+  const s=svg("c-quad",W,H);
+  bytes.forEach((b,i)=>{
+    const ox=i*pw;
+    const X=v=>ox+L+(v/46)*(pw-L-R), Y=v=>ph-B-((v-72)/22)*(ph-T-B);
+    el(s,"text",{x:ox+L,y:14,class:"axis",
+      style:"font-family:ui-monospace,Menlo,monospace;font-size:11px;fill:var(--ink)"}).textContent=b;
+    const g=el(s,"g",{class:"grid"});
+    [75,80,85,90].forEach(v=>el(g,"line",{x1:ox+L,x2:ox+pw-R,y1:Y(v),y2:Y(v)}));
+    const ax=el(s,"g",{class:"axis"});
+    if(i===0)[75,80,85,90].forEach(v=>el(ax,"text",{x:ox+L-8,y:Y(v)+3.5,"text-anchor":"end"}).textContent=v);
+    el(ax,"line",{x1:ox+L,x2:ox+pw-R,y1:ph-B,y2:ph-B});
+    [0,20,40].forEach(v=>{el(ax,"line",{x1:X(v),x2:X(v),y1:ph-B,y2:ph-B+4});
+      el(ax,"text",{x:X(v),y:ph-B+16,"text-anchor":"middle"}).textContent=v;});
+    el(s,"text",{x:ox+(L+pw-R)/2,y:ph-6,"text-anchor":"middle",class:"alab",
+      style:"font-size:10px"}).textContent="peak travel (mm)";
+    ev.forEach(e=>{
+      const c=el(s,"circle",{cx:X(e.peak),cy:Y(e.f[b]),r:5,fill:cols[i],class:"dot"});
+      c.addEventListener("mousemove",x=>showTip(x,`${e.run}\npeak ${e.peak} mm\n${b} = ${e.f[b]}`));
+      c.addEventListener("mouseleave",hideTip);
+    });
+  });
+})();
+
+/* ============ 5. RAW TABLE ============ */
+(function(){
+  const cols=[["run","run"],["peak","peak mm"],["dur","held s"],["uptime","uptime s"]];
+  const fcols=["0x38D b5:b6","0x37D b0:b1","0x31D b2\u25b8","0x37D b5","0x33D b0","0x33D b4","0x33D b5","0x33D b6","0x33D b7","0x34D b5"];
+  let h="<table><thead><tr>";
+  cols.forEach(c=>h+=`<th>${c[1]}</th>`);
+  fcols.forEach(c=>h+=`<th>${c}</th>`);
+  h+="</tr></thead><tbody>";
+  ev.forEach(e=>{
+    h+="<tr>";
+    h+=`<td class="num" style="color:var(--muted)">${e.run}</td>`;
+    h+=`<td class="num">${e.peak}</td><td class="num">${e.dur}</td><td class="num">${e.uptime}</td>`;
+    fcols.forEach(c=>h+=`<td class="num">${e.f[c]}</td>`);
+    h+="</tr>";
+  });
+  h+="</tbody></table>";
+  document.getElementById("c-table").innerHTML=h;
+})();
+</script>
